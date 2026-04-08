@@ -1,0 +1,29 @@
+{
+  "name": "@iw001/harness",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Agent orchestration harness for the IW001 maintenance dashboard. Spawns claude -p child processes with per-agent system prompts and scopes.",
+  "bin": {
+    "harness": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/cli.js",
+    "harness": "node dist/cli.js",
+    "dev": "ts-node cli.ts",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "cli-table3": "^0.6.5",
+    "commander": "^12.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
