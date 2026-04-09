@@ -22,6 +22,7 @@ import { PeriodStatsPage } from './features/period-stats/PeriodStatsPage';
 import { AnnouncementsPage } from './features/announcements/AnnouncementsPage';
 import { AsGuidePage } from './features/as-guide/AsGuidePage';
 import { OkrPage } from './features/okr/OkrPage';
+import { SpatialPage } from './features/spatial/SpatialPage';
 import { PlaceholderPage } from './components/layout/PlaceholderPage';
 import { PAGES } from '@iw001/shared';
 
@@ -54,6 +55,7 @@ const IMPLEMENTED_IDS = new Set([
   'announcements',
   'as-guide',
   'okr',
+  'spatial',
 ]);
 
 export function App() {
@@ -126,6 +128,9 @@ export function App() {
 
         {/* Analytics — OKR & KPI */}
         <Route path="okr" element={<OkrPage />} />
+
+        {/* Operations — 공간매핑 */}
+        <Route path="spatial" element={<SpatialPage />} />
 
         {/* Remaining spec pages — live nav, placeholder body (Phase 2). */}
         {PAGES.filter((p) => !IMPLEMENTED_IDS.has(p.id)).map((page) => (

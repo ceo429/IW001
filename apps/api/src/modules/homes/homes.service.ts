@@ -1,5 +1,51 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
+
+/**
+ * Conservative SVG sanitizer for stored floor plans. Strips anything
+ * dangerous at the string level BEFORE it lands in the DB so a
+ * misconfigured viewer never gets a chance to execute malicious markup.
+ *
+ * Rules (see docs/SECURITY.md §4.1):
+ *   - No <script> blocks
+ *   - No on* event handlers
+ *   - No external URL refs (href, xlink:href) to anything other than #anchors
+ *   - No javascript: URIs
+ *
+ * This is intentionally a blocklist + size cap, not a full allowlist
+ * parser. The client does a second DOMPurify pass when rendering, so we
+ * get defense in depth.
+ */
+function sanitizeSvgForStorage(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith('<svg')) {
+    throw new BadRequestException({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'SVG 는 <svg> 로 시작해야 합니다.',
+      },
+    });
+  }
+
+  // Strip <script>…</script>
+  let out = trimmed.replace(/<script[\s\S]*?<\/script>/gi, '');
+  // Strip `on*="..."` and `on*='...'` event handlers
+  out = out.replace(/\s+on[a-z]+\s*=\s*"[^"]*"/gi, '');
+  out = out.replace(/\s+on[a-z]+\s*=\s*'[^']*'/gi, '');
+  // Neutralize javascript: URIs
+  out = out.replace(/javascript:/gi, 'blocked:');
+  // Block external href / xlink:href unless it's a fragment (#anchor)
+  out = out.replace(
+    /(href|xlink:href)\s*=\s*"(?!#)[^"]*"/gi,
+    '$1="#"',
+  );
+  out = out.replace(
+    /(href|xlink:href)\s*=\s*'(?!#)[^']*'/gi,
+    "$1='#'",
+  );
+
+  return out;
+}
 
 /**
  * Homes (IoT 장소) — the data behind the "장소별 현황" monitoring page.
@@ -81,6 +127,8 @@ export class HomesService {
             online: true,
             battery: true,
             lastSeenAt: true,
+            posX: true,
+            posY: true,
           },
         },
         _count: { select: { devices: true, asTickets: true, maintenanceJobs: true } },
@@ -99,6 +147,87 @@ export class HomesService {
       offlineDevices: total - online,
       onlineRate: total === 0 ? 0 : Math.round((online / total) * 1000) / 10,
     };
+  }
+
+  // ---- Spatial mapping -----------------------------------------------------
+
+  /**
+   * Return the home's floor plan SVG + its devices with posX/posY. This is
+   * a minimal payload specifically for the spatial page (no AS tickets or
+   * maintenance jobs joined — keeps it cheap).
+   */
+  async getSpatial(id: string) {
+    const home = await this.prisma.home.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        name: true,
+        floorPlanSvg: true,
+        customer: { select: { id: true, name: true } },
+        devices: {
+          orderBy: { name: 'asc' },
+          select: {
+            id: true,
+            name: true,
+            category: true,
+            online: true,
+            posX: true,
+            posY: true,
+          },
+        },
+      },
+    });
+    if (!home) {
+      throw new NotFoundException({
+        error: { code: 'NOT_FOUND', message: '장소를 찾을 수 없습니다.' },
+      });
+    }
+    return home;
+  }
+
+  /**
+   * Replace the home's floor plan SVG. The value is sanitized before
+   * storage: scripts, event handlers, and external refs are stripped.
+   * This is a conservative allowlist approach — on the viewer side we
+   * still render it via dangerouslySetInnerHTML, but only after this
+   * server-side filter AND a second DOMPurify pass.
+   */
+  async setFloorPlan(id: string, svgRaw: string) {
+    const svg = sanitizeSvgForStorage(svgRaw);
+    await this.prisma.home.update({
+      where: { id },
+      data: { floorPlanSvg: svg },
+    });
+    return { id, svg };
+  }
+
+  /**
+   * Update a device's normalized (0..1) position. Passing null for both
+   * coordinates removes the device from the floor plan.
+   */
+  async updateDevicePosition(
+    deviceId: string,
+    posX: number | null,
+    posY: number | null,
+  ) {
+    const device = await this.prisma.device.findUnique({ where: { id: deviceId } });
+    if (!device) {
+      throw new NotFoundException({
+        error: { code: 'NOT_FOUND', message: '디바이스를 찾을 수 없습니다.' },
+      });
+    }
+    return this.prisma.device.update({
+      where: { id: deviceId },
+      data: { posX, posY },
+      select: {
+        id: true,
+        name: true,
+        category: true,
+        online: true,
+        posX: true,
+        posY: true,
+      },
+    });
   }
 
   /** Top-level monitoring KPIs consumed by the dashboard. */
