@@ -6,6 +6,7 @@ import { DashboardPage } from './features/dashboard/DashboardPage';
 import { QuotesListPage } from './features/quotes/QuotesListPage';
 import { QuoteDetailPage } from './features/quotes/QuoteDetailPage';
 import { QuoteEditorPage } from './features/quotes/QuoteEditorPage';
+import { ProductsPage } from './features/products/ProductsPage';
 import { PlaceholderPage } from './components/layout/PlaceholderPage';
 import { PAGES } from '@iw001/shared';
 
@@ -19,7 +20,7 @@ import { PAGES } from '@iw001/shared';
  *   - /quotes     → QuotesListPage (+ /new, /:id, /:id/edit)
  */
 
-const IMPLEMENTED_IDS = new Set(['dashboard', 'quotes']);
+const IMPLEMENTED_IDS = new Set(['dashboard', 'quotes', 'products']);
 
 export function App() {
   return (
@@ -43,6 +44,9 @@ export function App() {
         <Route path="quotes/new" element={<QuoteEditorPage />} />
         <Route path="quotes/:id" element={<QuoteDetailPage />} />
         <Route path="quotes/:id/edit" element={<QuoteEditorPage />} />
+
+        {/* Products feature */}
+        <Route path="products" element={<ProductsPage />} />
 
         {/* Remaining spec pages — live nav, placeholder body (Phase 2). */}
         {PAGES.filter((p) => !IMPLEMENTED_IDS.has(p.id)).map((page) => (
