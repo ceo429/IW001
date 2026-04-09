@@ -17,6 +17,7 @@ import { AsIntakePage } from './features/as-intake/AsIntakePage';
 import { StatsPage } from './features/stats/StatsPage';
 import { ApprovalsPage } from './features/approvals/ApprovalsPage';
 import { MaintenancePage } from './features/maintenance/MaintenancePage';
+import { AlarmsPage } from './features/alarms/AlarmsPage';
 import { PlaceholderPage } from './components/layout/PlaceholderPage';
 import { PAGES } from '@iw001/shared';
 
@@ -44,6 +45,7 @@ const IMPLEMENTED_IDS = new Set([
   'stats',
   'approvals',
   'maintenance',
+  'alarms',
 ]);
 
 export function App() {
@@ -101,6 +103,9 @@ export function App() {
 
         {/* Management — 유지보수 */}
         <Route path="maintenance" element={<MaintenancePage />} />
+
+        {/* System — 알림관리 */}
+        <Route path="alarms" element={<AlarmsPage />} />
 
         {/* Remaining spec pages — live nav, placeholder body (Phase 2). */}
         {PAGES.filter((p) => !IMPLEMENTED_IDS.has(p.id)).map((page) => (
