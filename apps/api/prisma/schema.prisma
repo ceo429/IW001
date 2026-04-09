@@ -387,6 +387,34 @@ model Notification {
   @@index([userId, read, createdAt])
 }
 
+// ===== CONTENT (announcements + AS guide) ==================================
+
+model Announcement {
+  id          String   @id @default(uuid())
+  title       String
+  body        String   @db.Text
+  pinned      Boolean  @default(false)
+  authorId    String
+  publishedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([pinned, publishedAt])
+}
+
+model AsGuideEntry {
+  id         String   @id @default(uuid())
+  deviceType String // 'switch' | 'hub' | 'plug' | 'sensor' | 'etc'
+  symptom    String
+  rootCause  String   @db.Text
+  action     String   @db.Text
+  tips       String?  @db.Text
+  caseCount  Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([deviceType])
+}
+
 // ===== AUDIT =================================================================
 
 model AuditLog {

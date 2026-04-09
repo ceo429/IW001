@@ -26,6 +26,7 @@ import { StatsModule } from './modules/stats/stats.module';
 import { ApprovalsModule } from './modules/approvals/approvals.module';
 import { MaintenanceModule } from './modules/maintenance/maintenance.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { AnnouncementsModule } from './modules/announcements/announcements.module';
 
 @Module({
   imports: [
@@ -79,6 +80,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     ApprovalsModule,
     MaintenanceModule,
     NotificationsModule,
+    AnnouncementsModule,
   ],
   providers: [
     // Guard chain — order matters: JWT -> Roles -> Permissions -> Throttler.
