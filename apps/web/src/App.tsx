@@ -18,6 +18,7 @@ import { StatsPage } from './features/stats/StatsPage';
 import { ApprovalsPage } from './features/approvals/ApprovalsPage';
 import { MaintenancePage } from './features/maintenance/MaintenancePage';
 import { AlarmsPage } from './features/alarms/AlarmsPage';
+import { PeriodStatsPage } from './features/period-stats/PeriodStatsPage';
 import { PlaceholderPage } from './components/layout/PlaceholderPage';
 import { PAGES } from '@iw001/shared';
 
@@ -46,6 +47,7 @@ const IMPLEMENTED_IDS = new Set([
   'approvals',
   'maintenance',
   'alarms',
+  'period-stats',
 ]);
 
 export function App() {
@@ -106,6 +108,9 @@ export function App() {
 
         {/* System — 알림관리 */}
         <Route path="alarms" element={<AlarmsPage />} />
+
+        {/* Analytics — 기간별 상세통계 */}
+        <Route path="period-stats" element={<PeriodStatsPage />} />
 
         {/* Remaining spec pages — live nav, placeholder body (Phase 2). */}
         {PAGES.filter((p) => !IMPLEMENTED_IDS.has(p.id)).map((page) => (

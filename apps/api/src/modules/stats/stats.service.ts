@@ -131,6 +131,70 @@ export class StatsService {
       homesAddedPerMonth: fillMonths(`${year}년 월별 장소 추가`, homesPerMonth),
     };
   }
+
+  // ---- Multi-year trends (used by the period-stats page) -----------------
+
+  /**
+   * Annual totals over a year range. Returns three parallel dense series
+   * (quotes / homes / devices) suitable for a line or multi-bar chart.
+   * Missing years come back as 0 so the caller never has to backfill.
+   * Range is inclusive on both ends.
+   */
+  async multiYear(
+    fromYear: number,
+    toYear: number,
+  ): Promise<{
+    yearlyQuotes: ChartSeries;
+    yearlyHomes: ChartSeries;
+    yearlyDevices: ChartSeries;
+    summary: {
+      totalQuotes: number;
+      totalHomes: number;
+      totalDevices: number;
+    };
+  }> {
+    const years: number[] = [];
+    for (let y = fromYear; y <= toYear; y++) years.push(y);
+
+    const [quoteRows, homeRows, deviceRows] = await Promise.all([
+      this.prisma.$queryRaw<Array<{ year: number; count: bigint }>>`
+        SELECT EXTRACT(YEAR FROM "issuedAt")::int AS year, COUNT(*)::bigint AS count
+        FROM "Quote"
+        WHERE EXTRACT(YEAR FROM "issuedAt") BETWEEN ${fromYear} AND ${toYear}
+        GROUP BY year
+        ORDER BY year ASC
+      `,
+      this.prisma.$queryRaw<Array<{ year: number; count: bigint }>>`
+        SELECT EXTRACT(YEAR FROM "createdAt")::int AS year, COUNT(*)::bigint AS count
+        FROM "Home"
+        WHERE EXTRACT(YEAR FROM "createdAt") BETWEEN ${fromYear} AND ${toYear}
+        GROUP BY year
+        ORDER BY year ASC
+      `,
+      this.prisma.$queryRaw<Array<{ year: number; count: bigint }>>`
+        SELECT EXTRACT(YEAR FROM "createdAt")::int AS year, COUNT(*)::bigint AS count
+        FROM "Device"
+        WHERE EXTRACT(YEAR FROM "createdAt") BETWEEN ${fromYear} AND ${toYear}
+        GROUP BY year
+        ORDER BY year ASC
+      `,
+    ]);
+
+    const yearlyQuotes = fillYears('연도별 견적 발행', years, quoteRows);
+    const yearlyHomes = fillYears('연도별 장소 도입', years, homeRows);
+    const yearlyDevices = fillYears('연도별 기기 추가', years, deviceRows);
+
+    return {
+      yearlyQuotes,
+      yearlyHomes,
+      yearlyDevices,
+      summary: {
+        totalQuotes: yearlyQuotes.points.reduce((s, p) => s + p.value, 0),
+        totalHomes: yearlyHomes.points.reduce((s, p) => s + p.value, 0),
+        totalDevices: yearlyDevices.points.reduce((s, p) => s + p.value, 0),
+      },
+    };
+  }
 }
 
 /**
@@ -148,4 +212,18 @@ function fillMonths(
     points.push({ label: `${m}월`, value: map.get(m) ?? 0 });
   }
   return { title, points };
+}
+
+/** Like fillMonths but for an arbitrary year range. */
+function fillYears(
+  title: string,
+  years: number[],
+  rows: Array<{ year: number; count: bigint }>,
+): ChartSeries {
+  const map = new Map<number, number>();
+  for (const r of rows) map.set(Number(r.year), Number(r.count));
+  return {
+    title,
+    points: years.map((y) => ({ label: `${y}`, value: map.get(y) ?? 0 })),
+  };
 }
