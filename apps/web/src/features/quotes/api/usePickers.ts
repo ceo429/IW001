@@ -12,7 +12,9 @@ export function useCustomersForPicker() {
     queryKey: ['customers', 'picker'],
     staleTime: 5 * 60_000,
     queryFn: async (): Promise<CustomerPick[]> => {
-      const res = await apiClient.get<CustomerPick[]>('/customers');
+      const res = await apiClient.get<CustomerPick[]>('/customers', {
+        params: { mode: 'picker' },
+      });
       return res.data.map((c) => ({ ...c, discountRate: Number(c.discountRate ?? 0) }));
     },
   });
