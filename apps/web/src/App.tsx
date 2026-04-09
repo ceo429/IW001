@@ -12,6 +12,7 @@ import { AdminPage } from './features/admin/AdminPage';
 import { HomeStatusPage } from './features/homes/HomeStatusPage';
 import { AuditLogPage } from './features/audit/AuditLogPage';
 import { ProjectsPage } from './features/projects/ProjectsPage';
+import { AccountsPage } from './features/accounts/AccountsPage';
 import { PlaceholderPage } from './components/layout/PlaceholderPage';
 import { PAGES } from '@iw001/shared';
 
@@ -34,6 +35,7 @@ const IMPLEMENTED_IDS = new Set([
   'home-status',
   'audit',
   'projects',
+  'accounts',
 ]);
 
 export function App() {
@@ -76,6 +78,9 @@ export function App() {
 
         {/* Operations — 프로젝트 & 태스크 */}
         <Route path="projects" element={<ProjectsPage />} />
+
+        {/* Monitoring — 헤이홈 계정 관리 */}
+        <Route path="accounts" element={<AccountsPage />} />
 
         {/* Remaining spec pages — live nav, placeholder body (Phase 2). */}
         {PAGES.filter((p) => !IMPLEMENTED_IDS.has(p.id)).map((page) => (

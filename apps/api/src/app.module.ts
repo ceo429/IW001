@@ -20,6 +20,7 @@ import { ProductsModule } from './modules/products/products.module';
 import { HomesModule } from './modules/homes/homes.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { ProjectsModule } from './modules/projects/projects.module';
+import { AccountsModule } from './modules/accounts/accounts.module';
 
 @Module({
   imports: [
@@ -67,6 +68,7 @@ import { ProjectsModule } from './modules/projects/projects.module';
     HomesModule,
     AuditModule,
     ProjectsModule,
+    AccountsModule,
   ],
   providers: [
     // Guard chain — order matters: JWT -> Roles -> Permissions -> Throttler.
