@@ -1,0 +1,46 @@
+# syntax=docker/dockerfile:1.6
+# =============================================================================
+# Multi-stage Dockerfile for @iw001/api.
+#
+# Stage 1 (deps):    install production dependencies with pnpm
+# Stage 2 (build):   compile TS + generate Prisma client
+# Stage 3 (runtime): distroless-style node:20-alpine with only what's needed
+# =============================================================================
+
+ARG NODE_VERSION=20
+
+# ---------- deps ----------
+FROM node:${NODE_VERSION}-alpine AS deps
+RUN corepack enable pnpm
+WORKDIR /app
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* turbo.json tsconfig.base.json ./
+COPY apps/api/package.json ./apps/api/
+COPY packages/shared/package.json ./packages/shared/
+RUN pnpm install --frozen-lockfile --ignore-scripts || pnpm install --ignore-scripts
+
+# ---------- build ----------
+FROM deps AS build
+COPY packages/shared ./packages/shared
+COPY apps/api ./apps/api
+RUN pnpm --filter @iw001/shared build \
+ && pnpm --filter @iw001/api db:generate \
+ && pnpm --filter @iw001/api build
+
+# ---------- runtime ----------
+FROM node:${NODE_VERSION}-alpine AS runtime
+ENV NODE_ENV=production
+WORKDIR /app
+
+# Non-root user
+RUN addgroup -S iw001 && adduser -S iw001 -G iw001
+
+COPY --from=build /app/apps/api/dist ./apps/api/dist
+COPY --from=build /app/apps/api/prisma ./apps/api/prisma
+COPY --from=build /app/apps/api/package.json ./apps/api/
+COPY --from=build /app/packages/shared/dist ./packages/shared/dist
+COPY --from=build /app/packages/shared/package.json ./packages/shared/
+COPY --from=build /app/node_modules ./node_modules
+
+USER iw001
+EXPOSE 3000
+CMD ["node", "apps/api/dist/main.js"]

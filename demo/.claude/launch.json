@@ -1,0 +1,9 @@
+{
+  "version": "1.0",
+  "preview": {
+    "command": "npx serve -l 5173 .",
+    "port": 5173,
+    "url": "http://localhost:5173",
+    "cwd": "demo"
+  }
+}

@@ -1,0 +1,88 @@
+# =============================================================================
+# IOTWORKS DESK — local development stack
+#
+# Brings up the minimal set of services needed to run apps/api against real
+# infrastructure. Both app containers mount their source for fast iteration.
+#
+# Usage:
+#   cp .env.example .env
+#   docker compose -f infra/docker-compose.yml up -d
+#   pnpm db:migrate && pnpm db:seed
+# =============================================================================
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: iw001-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: iw001
+      POSTGRES_PASSWORD: iw001_dev_pw
+      POSTGRES_DB: iw001
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U iw001 -d iw001']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: iw001-redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    command: ['redis-server', '--save', '60', '1', '--loglevel', 'warning']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.api
+    container_name: iw001-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      API_PORT: 3000
+      API_CORS_ORIGIN: http://localhost:5173
+      DATABASE_URL: postgresql://iw001:iw001_dev_pw@postgres:5432/iw001?schema=public
+      REDIS_URL: redis://redis:6379
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_ACCESS_TTL: 15m
+      JWT_REFRESH_TTL: 7d
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD}
+      LOG_LEVEL: info
+      LOG_PRETTY: 'true'
+    ports:
+      - '3000:3000'
+
+  web:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.web
+    container_name: iw001-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      VITE_API_BASE_URL: http://localhost:3000/v1
+    ports:
+      - '5173:80'
+
+volumes:
+  pgdata:
+    name: iw001-pgdata
