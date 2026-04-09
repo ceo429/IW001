@@ -1,15 +1,12 @@
 import { useState } from 'react';
 import { PermissionMatrix } from './components/PermissionMatrix';
+import { UsersPanel } from '@/features/users/UsersPanel';
 
 /**
  * Admin page with 3 tabs per 개발기획서 §4.7.3:
- *   - API 연결 관리
- *   - 섹션 권한 관리  (← THE permission matrix editor, the real feature)
- *   - 계정 관리
- *
- * Phase 1 ships the permission matrix because it's the single highest-
- * impact admin surface — it's the knob that controls RBAC for all other
- * pages. The other two tabs stay as stubs until Phase 2.
+ *   - 섹션 권한 관리  (permission matrix)
+ *   - API 연결 관리   (Phase 2)
+ *   - 계정 관리       (user CRUD)
  */
 
 type Tab = 'permissions' | 'api' | 'accounts';
@@ -50,7 +47,7 @@ export function AdminPage() {
 
       {tab === 'permissions' && <PermissionMatrix />}
       {tab === 'api' && <StubPanel title="API 연결 관리" />}
-      {tab === 'accounts' && <StubPanel title="계정 관리" />}
+      {tab === 'accounts' && <UsersPanel />}
     </div>
   );
 }
@@ -60,9 +57,8 @@ function StubPanel({ title }: { title: string }) {
     <div className="card">
       <h2 className="text-sm font-semibold text-neutral-200">{title}</h2>
       <p className="mt-2 text-xs text-neutral-500">
-        이 탭은 Phase 2에서 구현됩니다. 관련 백엔드 엔드포인트와 컨트롤러는
-        <code className="text-brand-400"> apps/api/src/modules/users </code>에
-        이미 준비되어 있으며, UI만 붙이면 됩니다.
+        이 탭은 Phase 2에서 구현됩니다. 장소별 API 연결(REST/MQTT/WebSocket)
+        설정과 연결 테스트 UI가 추가될 예정입니다.
       </p>
     </div>
   );
