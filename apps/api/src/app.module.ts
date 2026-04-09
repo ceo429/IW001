@@ -23,6 +23,7 @@ import { ProjectsModule } from './modules/projects/projects.module';
 import { AccountsModule } from './modules/accounts/accounts.module';
 import { AsTicketsModule } from './modules/as-tickets/as-tickets.module';
 import { StatsModule } from './modules/stats/stats.module';
+import { ApprovalsModule } from './modules/approvals/approvals.module';
 
 @Module({
   imports: [
@@ -73,6 +74,7 @@ import { StatsModule } from './modules/stats/stats.module';
     AccountsModule,
     AsTicketsModule,
     StatsModule,
+    ApprovalsModule,
   ],
   providers: [
     // Guard chain — order matters: JWT -> Roles -> Permissions -> Throttler.

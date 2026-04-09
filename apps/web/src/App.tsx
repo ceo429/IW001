@@ -15,6 +15,7 @@ import { ProjectsPage } from './features/projects/ProjectsPage';
 import { AccountsPage } from './features/accounts/AccountsPage';
 import { AsIntakePage } from './features/as-intake/AsIntakePage';
 import { StatsPage } from './features/stats/StatsPage';
+import { ApprovalsPage } from './features/approvals/ApprovalsPage';
 import { PlaceholderPage } from './components/layout/PlaceholderPage';
 import { PAGES } from '@iw001/shared';
 
@@ -40,6 +41,7 @@ const IMPLEMENTED_IDS = new Set([
   'accounts',
   'as-intake',
   'stats',
+  'approvals',
 ]);
 
 export function App() {
@@ -91,6 +93,9 @@ export function App() {
 
         {/* Analytics — 통계 */}
         <Route path="stats" element={<StatsPage />} />
+
+        {/* Management — 결재센터 */}
+        <Route path="approvals" element={<ApprovalsPage />} />
 
         {/* Remaining spec pages — live nav, placeholder body (Phase 2). */}
         {PAGES.filter((p) => !IMPLEMENTED_IDS.has(p.id)).map((page) => (
