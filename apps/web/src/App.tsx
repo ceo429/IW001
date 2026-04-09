@@ -21,6 +21,7 @@ import { AlarmsPage } from './features/alarms/AlarmsPage';
 import { PeriodStatsPage } from './features/period-stats/PeriodStatsPage';
 import { AnnouncementsPage } from './features/announcements/AnnouncementsPage';
 import { AsGuidePage } from './features/as-guide/AsGuidePage';
+import { OkrPage } from './features/okr/OkrPage';
 import { PlaceholderPage } from './components/layout/PlaceholderPage';
 import { PAGES } from '@iw001/shared';
 
@@ -52,6 +53,7 @@ const IMPLEMENTED_IDS = new Set([
   'period-stats',
   'announcements',
   'as-guide',
+  'okr',
 ]);
 
 export function App() {
@@ -121,6 +123,9 @@ export function App() {
 
         {/* Management — AS 가이드 */}
         <Route path="as-guide" element={<AsGuidePage />} />
+
+        {/* Analytics — OKR & KPI */}
+        <Route path="okr" element={<OkrPage />} />
 
         {/* Remaining spec pages — live nav, placeholder body (Phase 2). */}
         {PAGES.filter((p) => !IMPLEMENTED_IDS.has(p.id)).map((page) => (

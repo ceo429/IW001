@@ -28,6 +28,7 @@ import { MaintenanceModule } from './modules/maintenance/maintenance.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { AnnouncementsModule } from './modules/announcements/announcements.module';
 import { AsGuidesModule } from './modules/as-guides/as-guides.module';
+import { OkrModule } from './modules/okr/okr.module';
 
 @Module({
   imports: [
@@ -83,6 +84,7 @@ import { AsGuidesModule } from './modules/as-guides/as-guides.module';
     NotificationsModule,
     AnnouncementsModule,
     AsGuidesModule,
+    OkrModule,
   ],
   providers: [
     // Guard chain — order matters: JWT -> Roles -> Permissions -> Throttler.

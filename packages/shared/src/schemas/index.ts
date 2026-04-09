@@ -12,3 +12,4 @@ export * from './maintenance.js';
 export * from './notification.js';
 export * from './announcement.js';
 export * from './as-guide.js';
+export * from './okr.js';
