@@ -6,3 +6,4 @@ export * from './user.js';
 export * from './customer.js';
 export * from './project.js';
 export * from './account.js';
+export * from './as-ticket.js';
