@@ -10,6 +10,7 @@ import { ProductsPage } from './features/products/ProductsPage';
 import { CustomersPage } from './features/customers/CustomersPage';
 import { AdminPage } from './features/admin/AdminPage';
 import { HomeStatusPage } from './features/homes/HomeStatusPage';
+import { AuditLogPage } from './features/audit/AuditLogPage';
 import { PlaceholderPage } from './components/layout/PlaceholderPage';
 import { PAGES } from '@iw001/shared';
 
@@ -30,6 +31,7 @@ const IMPLEMENTED_IDS = new Set([
   'customers',
   'admin',
   'home-status',
+  'audit',
 ]);
 
 export function App() {
@@ -66,6 +68,9 @@ export function App() {
 
         {/* Monitoring — 장소별 현황 */}
         <Route path="home-status" element={<HomeStatusPage />} />
+
+        {/* System — 감사 로그 */}
+        <Route path="audit" element={<AuditLogPage />} />
 
         {/* Remaining spec pages — live nav, placeholder body (Phase 2). */}
         {PAGES.filter((p) => !IMPLEMENTED_IDS.has(p.id)).map((page) => (
