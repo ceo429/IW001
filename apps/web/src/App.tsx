@@ -11,6 +11,7 @@ import { CustomersPage } from './features/customers/CustomersPage';
 import { AdminPage } from './features/admin/AdminPage';
 import { HomeStatusPage } from './features/homes/HomeStatusPage';
 import { AuditLogPage } from './features/audit/AuditLogPage';
+import { ProjectsPage } from './features/projects/ProjectsPage';
 import { PlaceholderPage } from './components/layout/PlaceholderPage';
 import { PAGES } from '@iw001/shared';
 
@@ -32,6 +33,7 @@ const IMPLEMENTED_IDS = new Set([
   'admin',
   'home-status',
   'audit',
+  'projects',
 ]);
 
 export function App() {
@@ -71,6 +73,9 @@ export function App() {
 
         {/* System — 감사 로그 */}
         <Route path="audit" element={<AuditLogPage />} />
+
+        {/* Operations — 프로젝트 & 태스크 */}
+        <Route path="projects" element={<ProjectsPage />} />
 
         {/* Remaining spec pages — live nav, placeholder body (Phase 2). */}
         {PAGES.filter((p) => !IMPLEMENTED_IDS.has(p.id)).map((page) => (
