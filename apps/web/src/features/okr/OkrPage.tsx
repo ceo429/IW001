@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { currentOkrPeriods } from '@iw001/shared';
 import {
   useAddKeyResult,
@@ -24,17 +24,15 @@ export function OkrPage() {
 
   const objectives = list.data ?? [];
 
-  const averageProgress =
-    objectives.length === 0
-      ? 0
-      : Math.floor(
-          objectives.reduce((s, o) => s + o.progress, 0) / objectives.length,
-        );
+  const averageProgress = useMemo(() => {
+    if (objectives.length === 0) return 0;
+    const sum = objectives.reduce((s, o) => s + o.progress, 0);
+    return Math.floor(sum / objectives.length);
+  }, [objectives]);
 
-  // Show the current quarter + previous two + next three in the picker.
-  const upcoming = currentOkrPeriods();
-  const offerings = Array.from(
-    new Set([...previousQuarters(2), ...upcoming, period]),
+  const offerings = useMemo(
+    () => Array.from(new Set([...previousQuarters(2), ...currentOkrPeriods(), period])),
+    [period],
   );
 
   return (

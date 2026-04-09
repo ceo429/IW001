@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   PRIORITY_LABELS,
   PROJECT_STATUS_LABELS,
@@ -48,10 +48,11 @@ export function ProjectsPage() {
   const projects = list.data ?? [];
   const selected = selectedId ? projects.find((p) => p.id === selectedId) : undefined;
 
-  // Auto-select the first project the first time the list loads.
-  if (!selectedId && projects.length > 0) {
-    setSelectedId(projects[0]!.id);
-  }
+  useEffect(() => {
+    if (!selectedId && projects.length > 0) {
+      setSelectedId(projects[0]!.id);
+    }
+  }, [projects, selectedId]);
 
   return (
     <div className="mx-auto max-w-7xl">

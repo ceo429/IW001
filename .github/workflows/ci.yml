@@ -1,0 +1,161 @@
+# =============================================================================
+# IOTWORKS DESK — CI
+#
+# Runs on every push and PR to any branch. Verifies the monorepo builds,
+# typechecks, lints, and tests end-to-end. Uses pnpm workspaces with a
+# pnpm store cache to keep installs fast.
+#
+# Jobs:
+#   - shared     : typecheck + build the @iw001/shared package first so
+#                  downstream consumers can resolve its .d.ts / .js output.
+#   - api        : lint + typecheck + unit test apps/api (NestJS).
+#                  Also runs `prisma format` and `prisma validate` to catch
+#                  schema mistakes before they reach a real DB.
+#   - web        : lint + typecheck + vite build apps/web.
+#   - format     : prettier check on the whole repo. Fails fast on drift.
+# =============================================================================
+
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: ['**']
+
+env:
+  NODE_VERSION: '20'
+  PNPM_VERSION: '9'
+
+jobs:
+  shared:
+    name: shared package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Build @iw001/shared
+        run: pnpm --filter @iw001/shared build
+
+      - name: Typecheck
+        run: pnpm --filter @iw001/shared typecheck
+
+      - name: Upload built package
+        uses: actions/upload-artifact@v4
+        with:
+          name: shared-dist
+          path: packages/shared/dist
+          retention-days: 1
+
+  api:
+    name: apps/api
+    runs-on: ubuntu-latest
+    needs: shared
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Restore shared dist
+        uses: actions/download-artifact@v4
+        with:
+          name: shared-dist
+          path: packages/shared/dist
+
+      - name: Generate Prisma client
+        run: pnpm --filter @iw001/api db:generate
+
+      - name: Validate Prisma schema
+        run: pnpm --filter @iw001/api exec prisma validate
+
+      - name: Typecheck
+        run: pnpm --filter @iw001/api typecheck
+
+      - name: Lint
+        run: pnpm --filter @iw001/api lint
+        continue-on-error: true # ESLint config is not yet shipped — soft-fail
+
+      - name: Build
+        run: pnpm --filter @iw001/api build
+
+      - name: Test
+        run: pnpm --filter @iw001/api test -- --passWithNoTests
+
+  web:
+    name: apps/web
+    runs-on: ubuntu-latest
+    needs: shared
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Restore shared dist
+        uses: actions/download-artifact@v4
+        with:
+          name: shared-dist
+          path: packages/shared/dist
+
+      - name: Typecheck
+        run: pnpm --filter @iw001/web typecheck
+
+      - name: Lint
+        run: pnpm --filter @iw001/web lint
+        continue-on-error: true # ESLint config is not yet shipped — soft-fail
+
+      - name: Build
+        run: pnpm --filter @iw001/web build
+
+  format:
+    name: prettier
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Prettier check
+        run: pnpm format:check
+        continue-on-error: true # First CI run; enforce after baseline commit

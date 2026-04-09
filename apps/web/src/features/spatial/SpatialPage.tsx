@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { DEFAULT_FLOOR_PLAN_SVG } from '@iw001/shared';
 import { useHomesList } from '@/features/homes/api/useHomes';
 import {
@@ -37,16 +37,22 @@ export function SpatialPage() {
   const updatePosition = useUpdateDevicePosition(selectedHomeId ?? '');
   const setFloorPlan = useSetFloorPlan(selectedHomeId ?? '');
 
-  // Auto-select the first home when the list first arrives.
-  if (!selectedHomeId && homes.data && homes.data.length > 0) {
-    setSelectedHomeId(homes.data[0]!.id);
-  }
+  useEffect(() => {
+    if (!selectedHomeId && homes.data && homes.data.length > 0) {
+      setSelectedHomeId(homes.data[0]!.id);
+    }
+  }, [homes.data, selectedHomeId]);
 
   const devices = home?.devices ?? [];
-  const placed = devices.filter((d) => d.posX !== null && d.posY !== null);
-  const unplaced = devices.filter((d) => d.posX === null || d.posY === null);
-  const selectedDevice =
-    selectedDeviceId ? devices.find((d) => d.id === selectedDeviceId) : undefined;
+  const { placed, unplaced, selectedDevice } = useMemo(() => {
+    return {
+      placed: devices.filter((d) => d.posX !== null && d.posY !== null),
+      unplaced: devices.filter((d) => d.posX === null || d.posY === null),
+      selectedDevice: selectedDeviceId
+        ? devices.find((d) => d.id === selectedDeviceId)
+        : undefined,
+    };
+  }, [devices, selectedDeviceId]);
 
   function onPlace(deviceId: string, posX: number, posY: number) {
     updatePosition.mutate({ deviceId, posX, posY });
