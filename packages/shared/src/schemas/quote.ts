@@ -73,3 +73,38 @@ export const quoteStatusSchema = z.enum([
   'cancelled',
 ]);
 export type QuoteStatus = z.infer<typeof quoteStatusSchema>;
+
+/** Query parameters for GET /quotes list. */
+export const listQuotesQuerySchema = z.object({
+  page: z.coerce.number().int().positive().default(1),
+  pageSize: z.coerce.number().int().positive().max(100).default(20),
+  status: quoteStatusSchema.optional(),
+  customerId: idSchema.optional(),
+  /** Free-text match against code / customer name / note. */
+  q: z.string().max(120).optional(),
+});
+export type ListQuotesQuery = z.infer<typeof listQuotesQuerySchema>;
+
+/**
+ * State transitions map. Enforced on the server to prevent illegal moves
+ * (e.g. ordered -> draft). Frontend uses it only to gray out buttons.
+ */
+export const QUOTE_STATUS_TRANSITIONS: Record<QuoteStatus, readonly QuoteStatus[]> = {
+  draft: ['sent', 'cancelled'],
+  sent: ['approved', 'rejected', 'cancelled'],
+  approved: ['ordered', 'cancelled'],
+  rejected: ['draft', 'cancelled'],
+  ordered: [],
+  cancelled: [],
+};
+
+export function canTransition(from: QuoteStatus, to: QuoteStatus): boolean {
+  return QUOTE_STATUS_TRANSITIONS[from].includes(to);
+}
+
+/** Body for POST /quotes/:id/transition { to: QuoteStatus }. */
+export const transitionQuoteSchema = z.object({
+  to: quoteStatusSchema,
+  reason: z.string().max(500).optional(),
+});
+export type TransitionQuoteDto = z.infer<typeof transitionQuoteSchema>;

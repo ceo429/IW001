@@ -15,6 +15,8 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 import { UsersModule } from './modules/users/users.module';
 import { PermissionsModule } from './modules/permissions/permissions.module';
 import { QuotesModule } from './modules/quotes/quotes.module';
+import { CustomersModule } from './modules/customers/customers.module';
+import { ProductsModule } from './modules/products/products.module';
 
 @Module({
   imports: [
@@ -57,6 +59,8 @@ import { QuotesModule } from './modules/quotes/quotes.module';
     UsersModule,
     PermissionsModule,
     QuotesModule,
+    CustomersModule,
+    ProductsModule,
   ],
   providers: [
     // Guard chain — order matters: JWT -> Roles -> Permissions -> Throttler.

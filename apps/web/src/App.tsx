@@ -3,6 +3,9 @@ import { LoginPage } from './features/auth/LoginPage';
 import { AppLayout } from './components/layout/AppLayout';
 import { RequireAuth } from './features/auth/RequireAuth';
 import { DashboardPage } from './features/dashboard/DashboardPage';
+import { QuotesListPage } from './features/quotes/QuotesListPage';
+import { QuoteDetailPage } from './features/quotes/QuoteDetailPage';
+import { QuoteEditorPage } from './features/quotes/QuoteEditorPage';
 import { PlaceholderPage } from './components/layout/PlaceholderPage';
 import { PAGES } from '@iw001/shared';
 
@@ -10,7 +13,14 @@ import { PAGES } from '@iw001/shared';
  * Top-level route table. Every spec page is registered here — the ones that
  * ship in Phase 1 use real feature components, the rest temporarily render
  * <PlaceholderPage> so navigation is already fully wired.
+ *
+ * Phase 1 live routes:
+ *   - /dashboard  → DashboardPage
+ *   - /quotes     → QuotesListPage (+ /new, /:id, /:id/edit)
  */
+
+const IMPLEMENTED_IDS = new Set(['dashboard', 'quotes']);
+
 export function App() {
   return (
     <Routes>
@@ -25,10 +35,17 @@ export function App() {
         }
       >
         <Route index element={<Navigate to="/dashboard" replace />} />
+
         <Route path="dashboard" element={<DashboardPage />} />
 
-        {/* Phase 2+ placeholders — the nav is live, the content waits. */}
-        {PAGES.filter((p) => p.id !== 'dashboard').map((page) => (
+        {/* Quotes feature — nested so the sidebar highlight still works. */}
+        <Route path="quotes" element={<QuotesListPage />} />
+        <Route path="quotes/new" element={<QuoteEditorPage />} />
+        <Route path="quotes/:id" element={<QuoteDetailPage />} />
+        <Route path="quotes/:id/edit" element={<QuoteEditorPage />} />
+
+        {/* Remaining spec pages — live nav, placeholder body (Phase 2). */}
+        {PAGES.filter((p) => !IMPLEMENTED_IDS.has(p.id)).map((page) => (
           <Route
             key={page.id}
             path={page.id}

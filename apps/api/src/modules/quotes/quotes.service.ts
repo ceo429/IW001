@@ -1,7 +1,14 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import type { CreateQuoteDto, QuoteItemInput } from '@iw001/shared';
+import {
+  canTransition,
+  type CreateQuoteDto,
+  type ListQuotesQuery,
+  type QuoteItemInput,
+  type QuoteStatus,
+  type UpdateQuoteDto,
+} from '@iw001/shared';
 
 /**
  * Quote service.
@@ -18,31 +25,80 @@ export class QuotesService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  list() {
-    return this.prisma.quote.findMany({
-      include: { customer: { select: { id: true, name: true } } },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-    });
+  // ---------------------------------------------------------------------------
+  // Query
+  // ---------------------------------------------------------------------------
+
+  async list(query: ListQuotesQuery) {
+    const { page, pageSize, status, customerId, q } = query;
+
+    const where: Prisma.QuoteWhereInput = {
+      ...(status && { status }),
+      ...(customerId && { customerId }),
+      ...(q && {
+        OR: [
+          { code: { contains: q, mode: 'insensitive' } },
+          { note: { contains: q, mode: 'insensitive' } },
+          { customer: { name: { contains: q, mode: 'insensitive' } } },
+        ],
+      }),
+    };
+
+    const [total, rows] = await this.prisma.$transaction([
+      this.prisma.quote.count({ where }),
+      this.prisma.quote.findMany({
+        where,
+        include: {
+          customer: { select: { id: true, name: true } },
+          home: { select: { id: true, name: true } },
+          createdBy: { select: { id: true, name: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ]);
+
+    return {
+      data: rows,
+      pagination: {
+        page,
+        pageSize,
+        total,
+        pageCount: Math.max(1, Math.ceil(total / pageSize)),
+      },
+    };
   }
 
   async findOne(id: string) {
     const quote = await this.prisma.quote.findUnique({
       where: { id },
-      include: { items: { orderBy: { sortOrder: 'asc' } }, customer: true, home: true },
+      include: {
+        items: { orderBy: { sortOrder: 'asc' } },
+        customer: true,
+        home: true,
+        createdBy: { select: { id: true, name: true, email: true } },
+      },
     });
-    if (!quote) throw new NotFoundException({ error: { code: 'NOT_FOUND', message: '견적서를 찾을 수 없습니다.' } });
+    if (!quote) {
+      throw new NotFoundException({
+        error: { code: 'NOT_FOUND', message: '견적서를 찾을 수 없습니다.' },
+      });
+    }
     return quote;
   }
+
+  // ---------------------------------------------------------------------------
+  // Create
+  // ---------------------------------------------------------------------------
 
   async create(createdById: string, dto: CreateQuoteDto) {
     const resolvedItems = await this.resolveItems(dto.items);
     const calc = this.recompute(resolvedItems, QuotesService.DEFAULT_VAT_RATE);
-
     const code = await this.generateCode();
 
     return this.prisma.$transaction(async (tx) => {
-      const quote = await tx.quote.create({
+      return tx.quote.create({
         data: {
           code,
           customerId: dto.customerId,
@@ -73,8 +129,104 @@ export class QuotesService {
         },
         include: { items: { orderBy: { sortOrder: 'asc' } } },
       });
+    });
+  }
 
-      return quote;
+  // ---------------------------------------------------------------------------
+  // Update
+  // ---------------------------------------------------------------------------
+
+  async update(id: string, dto: UpdateQuoteDto) {
+    const existing = await this.prisma.quote.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException({
+        error: { code: 'NOT_FOUND', message: '견적서를 찾을 수 없습니다.' },
+      });
+    }
+
+    // Only drafts (or rejected, which can go back to draft) may be edited.
+    if (existing.status !== 'draft' && existing.status !== 'rejected') {
+      throw new BadRequestException({
+        error: {
+          code: 'BUSINESS_RULE_VIOLATION',
+          message: '발송 후에는 견적서를 수정할 수 없습니다. 복제 후 편집하세요.',
+        },
+      });
+    }
+
+    const items = dto.items;
+    const resolvedItems = items ? await this.resolveItems(items) : null;
+    const calc = resolvedItems
+      ? this.recompute(resolvedItems, Number(existing.vatRate))
+      : null;
+
+    return this.prisma.$transaction(async (tx) => {
+      // Replace items wholesale when the caller sends `items`. Simpler than
+      // diffing and safe because quote items belong to exactly one quote.
+      if (resolvedItems) {
+        await tx.quoteItem.deleteMany({ where: { quoteId: id } });
+      }
+
+      return tx.quote.update({
+        where: { id },
+        data: {
+          customerId: dto.customerId,
+          homeId: dto.homeId,
+          templateId: dto.templateId,
+          validUntil: dto.validUntil ? new Date(dto.validUntil) : undefined,
+          note: dto.note,
+          attrs: dto.attrs as Prisma.InputJsonValue | undefined,
+          ...(calc && {
+            subtotal: calc.subtotal,
+            discountTotal: calc.discountTotal,
+            vatAmount: calc.vatAmount,
+            total: calc.total,
+          }),
+          ...(resolvedItems && {
+            items: {
+              create: resolvedItems.map((it, idx) => ({
+                productId: it.productId ?? null,
+                name: it.name,
+                model: it.model ?? null,
+                unit: it.unit,
+                qty: it.qty,
+                unitPrice: it.unitPrice,
+                discount: it.discount,
+                lineTotal: it.lineTotal,
+                sortOrder: it.sortOrder ?? idx,
+              })),
+            },
+          }),
+        },
+        include: { items: { orderBy: { sortOrder: 'asc' } } },
+      });
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // State transition — server is the authority
+  // ---------------------------------------------------------------------------
+
+  async transition(id: string, to: QuoteStatus) {
+    const existing = await this.prisma.quote.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException({
+        error: { code: 'NOT_FOUND', message: '견적서를 찾을 수 없습니다.' },
+      });
+    }
+    if (!canTransition(existing.status as QuoteStatus, to)) {
+      throw new BadRequestException({
+        error: {
+          code: 'BUSINESS_RULE_VIOLATION',
+          message: `상태 전이 불가: ${existing.status} → ${to}`,
+        },
+      });
+    }
+
+    return this.prisma.quote.update({
+      where: { id },
+      data: { status: to },
+      include: { items: { orderBy: { sortOrder: 'asc' } } },
     });
   }
 
@@ -119,17 +271,34 @@ export class QuotesService {
     });
   }
 
-  private recompute(
-    items: Array<{ qty: number; unitPrice: number; discount: number; lineTotal: number }>,
+  /**
+   * Pure function — exposed as a static member so the controller layer and
+   * unit tests can call it directly without instantiating the service. The
+   * frontend has its own port of this (used for live preview only); the two
+   * MUST stay numerically identical. See apps/web/src/features/quotes/lib/recompute.ts.
+   */
+  static computeTotals(
+    items: Array<{ qty: number; unitPrice: number; discount: number }>,
     vatRate: number,
   ) {
-    const gross = items.reduce((s, i) => s + i.unitPrice * i.qty, 0);
-    const net = items.reduce((s, i) => s + i.lineTotal, 0);
+    const itemsWithLine = items.map((i) => ({
+      ...i,
+      lineTotal: round2(i.unitPrice * i.qty * (1 - i.discount / 100)),
+    }));
+    const gross = itemsWithLine.reduce((s, i) => s + i.unitPrice * i.qty, 0);
+    const net = itemsWithLine.reduce((s, i) => s + i.lineTotal, 0);
     const subtotal = round2(net);
     const discountTotal = round2(gross - net);
     const vatAmount = round2(subtotal * (vatRate / 100));
     const total = round2(subtotal + vatAmount);
-    return { subtotal, discountTotal, vatRate, vatAmount, total };
+    return { itemsWithLine, subtotal, discountTotal, vatRate, vatAmount, total };
+  }
+
+  private recompute(
+    items: Array<{ qty: number; unitPrice: number; discount: number; lineTotal: number }>,
+    vatRate: number,
+  ) {
+    return QuotesService.computeTotals(items, vatRate);
   }
 
   private async generateCode(): Promise<string> {
