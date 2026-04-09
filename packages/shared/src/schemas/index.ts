@@ -11,3 +11,4 @@ export * from './approval.js';
 export * from './maintenance.js';
 export * from './notification.js';
 export * from './announcement.js';
+export * from './as-guide.js';

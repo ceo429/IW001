@@ -20,6 +20,7 @@ import { MaintenancePage } from './features/maintenance/MaintenancePage';
 import { AlarmsPage } from './features/alarms/AlarmsPage';
 import { PeriodStatsPage } from './features/period-stats/PeriodStatsPage';
 import { AnnouncementsPage } from './features/announcements/AnnouncementsPage';
+import { AsGuidePage } from './features/as-guide/AsGuidePage';
 import { PlaceholderPage } from './components/layout/PlaceholderPage';
 import { PAGES } from '@iw001/shared';
 
@@ -50,6 +51,7 @@ const IMPLEMENTED_IDS = new Set([
   'alarms',
   'period-stats',
   'announcements',
+  'as-guide',
 ]);
 
 export function App() {
@@ -116,6 +118,9 @@ export function App() {
 
         {/* Operations — 공지사항 */}
         <Route path="announcements" element={<AnnouncementsPage />} />
+
+        {/* Management — AS 가이드 */}
+        <Route path="as-guide" element={<AsGuidePage />} />
 
         {/* Remaining spec pages — live nav, placeholder body (Phase 2). */}
         {PAGES.filter((p) => !IMPLEMENTED_IDS.has(p.id)).map((page) => (
