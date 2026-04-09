@@ -9,6 +9,7 @@ import { QuoteEditorPage } from './features/quotes/QuoteEditorPage';
 import { ProductsPage } from './features/products/ProductsPage';
 import { CustomersPage } from './features/customers/CustomersPage';
 import { AdminPage } from './features/admin/AdminPage';
+import { HomeStatusPage } from './features/homes/HomeStatusPage';
 import { PlaceholderPage } from './components/layout/PlaceholderPage';
 import { PAGES } from '@iw001/shared';
 
@@ -28,6 +29,7 @@ const IMPLEMENTED_IDS = new Set([
   'products',
   'customers',
   'admin',
+  'home-status',
 ]);
 
 export function App() {
@@ -61,6 +63,9 @@ export function App() {
 
         {/* Admin settings (permission matrix editor) */}
         <Route path="admin" element={<AdminPage />} />
+
+        {/* Monitoring — 장소별 현황 */}
+        <Route path="home-status" element={<HomeStatusPage />} />
 
         {/* Remaining spec pages — live nav, placeholder body (Phase 2). */}
         {PAGES.filter((p) => !IMPLEMENTED_IDS.has(p.id)).map((page) => (
