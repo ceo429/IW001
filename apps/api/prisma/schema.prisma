@@ -421,7 +421,7 @@ model OkrObjective {
   id          String         @id @default(uuid())
   title       String
   description String?        @db.Text
-  /** Format: "2026Q1" */
+  // Format: "2026Q1"
   period      String
   ownerId     String?
   createdAt   DateTime       @default(now())
@@ -437,7 +437,7 @@ model OkrKeyResult {
   objectiveId String
   objective   OkrObjective @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
   title       String
-  /** 0-100 integer percentage, authoritative progress indicator. */
+  // 0-100 integer percentage, authoritative progress indicator.
   progress    Int          @default(0)
   sortOrder   Int          @default(0)
   createdAt   DateTime     @default(now())

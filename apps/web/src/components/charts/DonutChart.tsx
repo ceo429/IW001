@@ -33,7 +33,7 @@ export function DonutChart({ data, size = 200 }: Props) {
       let start = -Math.PI / 2;
       data.forEach((d, i) => {
         const angle = (d.value / total) * Math.PI * 2;
-        const color = CHART_COLORS[i % CHART_COLORS.length];
+        const color = CHART_COLORS[i % CHART_COLORS.length] ?? '#eab308';
         ctx.beginPath();
         ctx.moveTo(cx, cy);
         ctx.arc(cx, cy, outer, start, start + angle);

@@ -81,7 +81,7 @@ export class AuditInterceptor implements NestInterceptor {
           resourceId,
           action: meta.action,
           severity: meta.severity ?? 'normal',
-          after: response as object | null,
+          after: response != null ? (response as object) : undefined,
         },
       });
     } catch {

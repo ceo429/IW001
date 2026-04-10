@@ -254,7 +254,7 @@ export class AuthService {
 
 // ---- helpers ----
 
-interface PublicUser {
+export interface PublicUser {
   id: string;
   email: string;
   name: string;

@@ -1,13 +1,3 @@
-/**
- * Jest configuration for apps/api.
- *
- * Unit tests live in test/ and are plain TypeScript files (no Nest
- * bootstrap needed for pure-function tests like quotes-compute.spec.ts).
- * ts-jest transforms on the fly; we don't ship a separate tsconfig for
- * tests because the root tsconfig.json already covers the relevant
- * globs via `include: ["src/**/*", "prisma/seed.ts"]` and ts-jest only
- * needs the compilerOptions anyway.
- */
 /** @type {import('jest').Config} */
 module.exports = {
   preset: 'ts-jest',
@@ -17,9 +7,13 @@ module.exports = {
   testMatch: ['**/*.spec.ts'],
   moduleFileExtensions: ['ts', 'js', 'json'],
   moduleNameMapper: {
-    // Map the workspace package so tests resolve it without a build step.
+    // Map the workspace package to its TS source so ts-jest can process it.
     '^@iw001/shared$': '<rootDir>/../../packages/shared/src/index.ts',
     '^@iw001/shared/(.*)$': '<rootDir>/../../packages/shared/src/$1',
+    // Strip .js extensions from ESM-style relative imports so ts-jest
+    // resolves ./foo.js to ./foo.ts. Needed because @iw001/shared uses
+    // .js extensions (correct for ESM output) in its source imports.
+    '^(\\.{1,2}/.*)\\.js$': '$1',
   },
   transform: {
     '^.+\\.ts$': [
@@ -38,4 +32,8 @@ module.exports = {
       },
     ],
   },
+  // Transform @iw001/shared source files through ts-jest too (it lives
+  // outside node_modules so the default ignore pattern already lets it
+  // through, but this makes the intent explicit).
+  transformIgnorePatterns: ['node_modules/(?!@iw001)'],
 };

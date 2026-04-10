@@ -26,10 +26,7 @@ import {
 import { NotificationsService } from './notifications.service';
 
 const listQuerySchema = z.object({
-  unreadOnly: z
-    .enum(['true', 'false'])
-    .optional()
-    .transform((v) => v === 'true'),
+  unreadOnly: z.enum(['true', 'false']).optional(),
   severity: notifSeveritySchema.optional(),
 });
 
@@ -44,7 +41,10 @@ export class NotificationsController {
     @CurrentUser() user: AuthenticatedRequestUser,
     @Query(new ZodValidationPipe(listQuerySchema)) query: z.infer<typeof listQuerySchema>,
   ) {
-    return this.notifications.list(user.id, query);
+    return this.notifications.list(user.id, {
+      unreadOnly: query.unreadOnly === 'true',
+      severity: query.severity,
+    });
   }
 
   @Get('unread-count')
