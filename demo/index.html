@@ -613,22 +613,18 @@
       // ═══════════════════════════════════════════════════════════════
       //   NAVIGATION + SIDEBAR
       // ═══════════════════════════════════════════════════════════════
+      // Page renderers that have real CRUD
+      const LIVE_PAGES = { dashboard: renderDashboard, products: renderProducts, customers: renderCustomers, quotes: renderQuotes };
+
       function navigate(pageId) {
         state.currentPage = pageId;
-        // Re-render sidebar for active state
         renderSidebar();
-        // Render page
         const host = document.getElementById('page-host');
         const page = PAGES.find((p) => p.id === pageId);
-        if (!page) {
-          host.innerHTML = '<p>페이지를 찾을 수 없습니다.</p>';
-          return;
-        }
-        if (pageId === 'dashboard') {
-          renderDashboard(host);
-        } else {
-          renderPlaceholder(host, page);
-        }
+        if (!page) { host.innerHTML = '<p>페이지를 찾을 수 없습니다.</p>'; return; }
+        const renderer = LIVE_PAGES[pageId];
+        if (renderer) renderer(host);
+        else renderPlaceholder(host, page);
       }
 
       function renderSidebar() {
@@ -875,6 +871,389 @@
           .replace(/>/g, '&gt;')
           .replace(/"/g, '&quot;')
           .replace(/'/g, '&#39;');
+      }
+
+      // ═══════════════════════════════════════════════════════════════
+      //   CRUD DATA STORE (localStorage-backed)
+      // ═══════════════════════════════════════════════════════════════
+      const CATEGORIES = ['스위치', '허브', '플러그', '센서', 'DC/전원', '미디어', '기타'];
+      const KRW = new Intl.NumberFormat('ko-KR', { style: 'currency', currency: 'KRW', maximumFractionDigits: 0 });
+
+      function loadStore(key, fallback) {
+        try { return JSON.parse(localStorage.getItem(key)) || fallback; }
+        catch { return fallback; }
+      }
+      function saveStore(key, data) { localStorage.setItem(key, JSON.stringify(data)); }
+      let nextId = Date.now();
+      function genId() { return 'id_' + (nextId++); }
+
+      // -- Products seed
+      const DEFAULT_PRODUCTS = [
+        { id: genId(), category: '스위치', name: 'IoT 스마트 스위치 3구', model: 'SW-301', unit: 'EA', price: 89000, stock: 120, minStock: 20 },
+        { id: genId(), category: '허브', name: 'IoT 허브 Pro', model: 'HUB-P100', unit: 'EA', price: 150000, stock: 45, minStock: 10 },
+        { id: genId(), category: '센서', name: '온습도 센서', model: 'TH-200', unit: 'EA', price: 35000, stock: 200, minStock: 50 },
+        { id: genId(), category: '플러그', name: '스마트 플러그 16A', model: 'PG-16A', unit: 'EA', price: 42000, stock: 80, minStock: 15 },
+        { id: genId(), category: 'DC/전원', name: 'DC 어댑터 12V', model: 'DC-12V5A', unit: 'EA', price: 12500, stock: 300, minStock: 100 },
+      ];
+      let products = loadStore('iw001.products', DEFAULT_PRODUCTS);
+      function saveProducts() { saveStore('iw001.products', products); }
+
+      // -- Customers seed
+      const DEFAULT_CUSTOMERS = [
+        { id: genId(), name: '프렌즈스크린 서초점', ceo: '김대표', bizNo: '123-45-67890', phone: '02-1234-5678', discount: 5 },
+        { id: genId(), name: '김캐디 골프존S', ceo: '이사장', bizNo: '234-56-78901', phone: '031-987-6543', discount: 3 },
+        { id: genId(), name: '스마트상점 서강', ceo: '박매니저', bizNo: '345-67-89012', phone: '02-555-1234', discount: 0 },
+      ];
+      let customers = loadStore('iw001.customers', DEFAULT_CUSTOMERS);
+      function saveCustomers() { saveStore('iw001.customers', customers); }
+
+      // -- Quotes seed
+      let quotes = loadStore('iw001.quotes', []);
+      function saveQuotes() { saveStore('iw001.quotes', quotes); }
+      let quoteSeq = loadStore('iw001.quoteSeq', 1);
+
+      // ═══════════════════════════════════════════════════════════════
+      //   PAGE — PRODUCTS (full CRUD)
+      // ═══════════════════════════════════════════════════════════════
+      function renderProducts(host) {
+        const lowStock = products.filter(p => p.stock <= p.minStock).length;
+        const totalValue = products.reduce((s, p) => s + p.price * p.stock, 0);
+        host.innerHTML = `
+          <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <div>
+              <div class="eyebrow">재무</div>
+              <h1>품목관리</h1>
+            </div>
+            <button class="btn btn-primary" onclick="openProductModal()">+ 새 품목</button>
+          </div>
+          <section class="kpi-grid">
+            <div class="card kpi"><div class="kpi-label">총 품목</div><div class="kpi-value">${products.length}</div></div>
+            <div class="card kpi"><div class="kpi-label">총 재고가치</div><div class="kpi-value">${KRW.format(totalValue)}</div></div>
+            <div class="card kpi"><div class="kpi-label">재고 부족</div><div class="kpi-value" style="color:${lowStock ? '#ef4444' : 'var(--brand-400)'}">${lowStock}</div></div>
+            <div class="card kpi"><div class="kpi-label">카테고리</div><div class="kpi-value">${new Set(products.map(p=>p.category)).size}</div></div>
+          </section>
+          <div class="card" style="overflow-x:auto; padding:0;">
+            <table style="width:100%; border-collapse:collapse; font-size:13px;">
+              <thead style="background:var(--bg-muted); font-size:11px; text-transform:uppercase; color:var(--text-faint);">
+                <tr>
+                  <th style="padding:10px 16px; text-align:left;">카테고리</th>
+                  <th style="padding:10px 16px; text-align:left;">품명</th>
+                  <th style="padding:10px 16px; text-align:left;">모델</th>
+                  <th style="padding:10px 16px; text-align:right;">단가</th>
+                  <th style="padding:10px 16px; text-align:right;">재고</th>
+                  <th style="padding:10px 8px; width:100px;"></th>
+                </tr>
+              </thead>
+              <tbody>
+                ${products.map(p => {
+                  const low = p.stock <= p.minStock;
+                  return `<tr style="border-top:1px solid var(--border);">
+                    <td style="padding:10px 16px; color:var(--text-faint); font-size:12px;">${escapeHtml(p.category)}</td>
+                    <td style="padding:10px 16px; font-weight:500;">${escapeHtml(p.name)}</td>
+                    <td style="padding:10px 16px; font-size:12px; color:var(--text-muted);">${escapeHtml(p.model||'—')}</td>
+                    <td style="padding:10px 16px; text-align:right; font-family:monospace; color:var(--brand-400);">${KRW.format(p.price)}</td>
+                    <td style="padding:10px 16px; text-align:right; font-family:monospace; color:${low?'#ef4444':'var(--text)'};">${p.stock}${low?' ⚠':''}</td>
+                    <td style="padding:10px 8px; text-align:right;">
+                      <button class="btn btn-secondary" style="padding:4px 8px; font-size:11px;" onclick="openProductModal('${p.id}')">수정</button>
+                      <button class="btn btn-secondary" style="padding:4px 8px; font-size:11px; color:#ef4444;" onclick="deleteProduct('${p.id}')">삭제</button>
+                    </td>
+                  </tr>`;
+                }).join('')}
+                ${products.length === 0 ? '<tr><td colspan="6" style="padding:40px; text-align:center; color:var(--text-faint);">품목이 없습니다.</td></tr>' : ''}
+              </tbody>
+            </table>
+          </div>
+        `;
+      }
+
+      function openProductModal(id) {
+        const p = id ? products.find(x => x.id === id) : null;
+        const title = p ? '품목 수정' : '새 품목';
+        showModal(title, `
+          <label class="label">카테고리</label>
+          <select class="input" id="m-cat">${CATEGORIES.map(c => `<option ${p&&p.category===c?'selected':''}>${c}</option>`).join('')}</select>
+          <label class="label mt-2">품명 *</label>
+          <input class="input" id="m-name" value="${escapeHtml(p?.name||'')}" required />
+          <label class="label mt-2">모델</label>
+          <input class="input" id="m-model" value="${escapeHtml(p?.model||'')}" />
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;" class="mt-2">
+            <div><label class="label">단가 (원)</label><input class="input" type="number" id="m-price" value="${p?.price||0}" min="0" /></div>
+            <div><label class="label">재고</label><input class="input" type="number" id="m-stock" value="${p?.stock||0}" min="0" /></div>
+          </div>
+        `, () => {
+          const data = {
+            category: document.getElementById('m-cat').value,
+            name: document.getElementById('m-name').value.trim(),
+            model: document.getElementById('m-model').value.trim(),
+            price: Number(document.getElementById('m-price').value) || 0,
+            stock: Number(document.getElementById('m-stock').value) || 0,
+            minStock: p?.minStock || 5,
+          };
+          if (!data.name) { toast('error', '품명을 입력하세요.'); return false; }
+          if (p) { Object.assign(p, data); }
+          else { products.push({ id: genId(), unit: 'EA', ...data }); }
+          saveProducts(); navigate('products'); toast('success', p ? '품목 수정됨' : '품목 추가됨');
+        });
+      }
+
+      function deleteProduct(id) {
+        if (!confirm('이 품목을 삭제하시겠습니까?')) return;
+        products = products.filter(p => p.id !== id);
+        saveProducts(); navigate('products'); toast('success', '품목 삭제됨');
+      }
+
+      // ═══════════════════════════════════════════════════════════════
+      //   PAGE — CUSTOMERS (full CRUD)
+      // ═══════════════════════════════════════════════════════════════
+      function renderCustomers(host) {
+        host.innerHTML = `
+          <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <div>
+              <div class="eyebrow">고객</div>
+              <h1>고객관리</h1>
+            </div>
+            <button class="btn btn-primary" onclick="openCustomerModal()">+ 새 고객사</button>
+          </div>
+          <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:16px;">
+            ${customers.map(c => `
+              <div class="card">
+                <h3 style="margin:0 0 4px; font-size:16px;">${escapeHtml(c.name)}</h3>
+                ${c.ceo ? `<div class="text-xs faint">대표: ${escapeHtml(c.ceo)}</div>` : ''}
+                <dl style="margin-top:12px; font-size:12px; display:grid; gap:4px;">
+                  ${c.bizNo ? `<div style="display:flex; justify-content:space-between;"><dt class="faint">사업자</dt><dd class="mono">${escapeHtml(c.bizNo)}</dd></div>` : ''}
+                  ${c.phone ? `<div style="display:flex; justify-content:space-between;"><dt class="faint">연락처</dt><dd>${escapeHtml(c.phone)}</dd></div>` : ''}
+                  ${c.discount ? `<div style="display:flex; justify-content:space-between;"><dt class="faint">기본 할인</dt><dd style="color:var(--brand-400);">${c.discount}%</dd></div>` : ''}
+                </dl>
+                <div style="margin-top:12px; display:flex; gap:8px; justify-content:flex-end;">
+                  <button class="btn btn-secondary" style="padding:4px 8px; font-size:11px;" onclick="openCustomerModal('${c.id}')">수정</button>
+                  <button class="btn btn-secondary" style="padding:4px 8px; font-size:11px; color:#ef4444;" onclick="deleteCustomer('${c.id}')">삭제</button>
+                </div>
+              </div>
+            `).join('')}
+            ${customers.length === 0 ? '<div class="card" style="text-align:center; color:var(--text-faint); padding:40px;">고객사가 없습니다.</div>' : ''}
+          </div>
+        `;
+      }
+
+      function openCustomerModal(id) {
+        const c = id ? customers.find(x => x.id === id) : null;
+        showModal(c ? '고객사 수정' : '새 고객사', `
+          <label class="label">회사명 *</label>
+          <input class="input" id="m-cname" value="${escapeHtml(c?.name||'')}" required />
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;" class="mt-2">
+            <div><label class="label">대표자</label><input class="input" id="m-ceo" value="${escapeHtml(c?.ceo||'')}" /></div>
+            <div><label class="label">사업자번호</label><input class="input" id="m-biz" value="${escapeHtml(c?.bizNo||'')}" /></div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;" class="mt-2">
+            <div><label class="label">연락처</label><input class="input" id="m-phone" value="${escapeHtml(c?.phone||'')}" /></div>
+            <div><label class="label">기본 할인율 (%)</label><input class="input" type="number" id="m-disc" value="${c?.discount||0}" min="0" max="100" /></div>
+          </div>
+        `, () => {
+          const name = document.getElementById('m-cname').value.trim();
+          if (!name) { toast('error', '회사명을 입력하세요.'); return false; }
+          const data = {
+            name,
+            ceo: document.getElementById('m-ceo').value.trim(),
+            bizNo: document.getElementById('m-biz').value.trim(),
+            phone: document.getElementById('m-phone').value.trim(),
+            discount: Number(document.getElementById('m-disc').value) || 0,
+          };
+          if (c) { Object.assign(c, data); }
+          else { customers.push({ id: genId(), ...data }); }
+          saveCustomers(); navigate('customers'); toast('success', c ? '고객사 수정됨' : '고객사 추가됨');
+        });
+      }
+
+      function deleteCustomer(id) {
+        if (!confirm('이 고객사를 삭제하시겠습니까?')) return;
+        customers = customers.filter(c => c.id !== id);
+        saveCustomers(); navigate('customers'); toast('success', '고객사 삭제됨');
+      }
+
+      // ═══════════════════════════════════════════════════════════════
+      //   PAGE — QUOTES (create + list + preview calc)
+      // ═══════════════════════════════════════════════════════════════
+      function renderQuotes(host) {
+        host.innerHTML = `
+          <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <div>
+              <div class="eyebrow">재무</div>
+              <h1>견적서</h1>
+            </div>
+            <button class="btn btn-primary" onclick="openQuoteModal()">+ 새 견적서</button>
+          </div>
+          ${quotes.length === 0 ? '<div class="card" style="text-align:center; padding:40px; color:var(--text-faint);">견적서가 없습니다. 오른쪽 상단에서 추가하세요.</div>' : ''}
+          <div style="display:flex; flex-direction:column; gap:12px;">
+            ${quotes.map(q => {
+              const cust = customers.find(c => c.id === q.customerId);
+              return `<div class="card">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                  <div>
+                    <div class="mono" style="color:var(--brand-400); font-weight:600;">${escapeHtml(q.code)}</div>
+                    <div class="text-xs muted mt-2">${escapeHtml(cust?.name||'—')} · ${q.items.length}개 품목</div>
+                  </div>
+                  <div style="text-align:right;">
+                    <div style="font-size:20px; font-weight:700; color:var(--brand-400);">${KRW.format(q.total)}</div>
+                    <div class="text-xs faint">${q.date}</div>
+                  </div>
+                </div>
+                <table style="width:100%; margin-top:12px; border-collapse:collapse; font-size:12px;">
+                  <thead style="color:var(--text-faint); font-size:10px; text-transform:uppercase;">
+                    <tr>
+                      <th style="text-align:left; padding:4px 0;">품명</th>
+                      <th style="text-align:right; padding:4px 0;">수량</th>
+                      <th style="text-align:right; padding:4px 0;">단가</th>
+                      <th style="text-align:right; padding:4px 0;">할인</th>
+                      <th style="text-align:right; padding:4px 0;">소계</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${q.items.map(it => `<tr style="border-top:1px solid var(--border);">
+                      <td style="padding:6px 0;">${escapeHtml(it.name)}</td>
+                      <td style="text-align:right; padding:6px 0; font-family:monospace;">${it.qty}</td>
+                      <td style="text-align:right; padding:6px 0; font-family:monospace;">${KRW.format(it.price)}</td>
+                      <td style="text-align:right; padding:6px 0; color:var(--text-faint);">${it.discount?it.discount+'%':'—'}</td>
+                      <td style="text-align:right; padding:6px 0; font-family:monospace;">${KRW.format(it.lineTotal)}</td>
+                    </tr>`).join('')}
+                  </tbody>
+                </table>
+                <div style="margin-top:12px; border-top:1px solid var(--border); padding-top:8px; display:flex; justify-content:space-between; font-size:12px;">
+                  <span class="faint">공급가 ${KRW.format(q.subtotal)} · 부가세(10%) ${KRW.format(q.vat)}</span>
+                  <button class="btn btn-secondary" style="padding:4px 8px; font-size:11px; color:#ef4444;" onclick="deleteQuote('${q.id}')">삭제</button>
+                </div>
+              </div>`;
+            }).join('')}
+          </div>
+        `;
+      }
+
+      function openQuoteModal() {
+        if (customers.length === 0) { toast('error', '고객사를 먼저 등록하세요.'); return; }
+        if (products.length === 0) { toast('error', '품목을 먼저 등록하세요.'); return; }
+        // Build a dynamic form for adding quote items
+        let items = [{ productId: products[0].id, qty: 1, discount: 0 }];
+
+        function renderItems() {
+          const container = document.getElementById('quote-items');
+          if (!container) return;
+          container.innerHTML = items.map((it, i) => {
+            const p = products.find(x => x.id === it.productId);
+            const lineTotal = Math.round((p?.price||0) * it.qty * (1 - it.discount/100));
+            return `<div style="display:grid; grid-template-columns:2fr 60px 70px 60px 30px; gap:4px; align-items:center; margin-bottom:4px;">
+              <select class="input" style="padding:6px 8px; font-size:12px;" onchange="quoteItemChange(${i},'productId',this.value)">
+                ${products.map(pr => `<option value="${pr.id}" ${pr.id===it.productId?'selected':''}>${pr.name} (${KRW.format(pr.price)})</option>`).join('')}
+              </select>
+              <input class="input" type="number" min="1" value="${it.qty}" style="padding:6px 4px; font-size:12px; text-align:center;" onchange="quoteItemChange(${i},'qty',this.value)" />
+              <div style="text-align:right; font-family:monospace; font-size:12px; color:var(--brand-400);">${KRW.format(lineTotal)}</div>
+              <input class="input" type="number" min="0" max="100" value="${it.discount}" style="padding:6px 4px; font-size:11px; text-align:center;" onchange="quoteItemChange(${i},'discount',this.value)" placeholder="%" />
+              <button type="button" style="background:none; border:none; color:var(--text-faint); cursor:pointer;" onclick="quoteItemRemove(${i})">✕</button>
+            </div>`;
+          }).join('');
+          // Summary
+          const totals = calcQuoteTotals(items);
+          document.getElementById('quote-summary').innerHTML = `
+            공급가 <b style="color:var(--brand-400)">${KRW.format(totals.subtotal)}</b> +
+            부가세(10%) <b>${KRW.format(totals.vat)}</b> =
+            합계 <b style="color:var(--brand-400); font-size:16px;">${KRW.format(totals.total)}</b>
+            <div class="text-xs faint mt-2">이 금액은 브라우저 미리보기입니다.</div>
+          `;
+        }
+
+        // Expose helpers to global for inline handlers
+        window.quoteItemChange = (i, key, val) => {
+          if (key === 'qty') items[i].qty = Math.max(1, Number(val)||1);
+          else if (key === 'discount') items[i].discount = Math.min(100, Math.max(0, Number(val)||0));
+          else items[i][key] = val;
+          renderItems();
+        };
+        window.quoteItemRemove = (i) => { items.splice(i, 1); if (items.length === 0) items.push({ productId: products[0].id, qty: 1, discount: 0 }); renderItems(); };
+        window.quoteItemAdd = () => { items.push({ productId: products[0].id, qty: 1, discount: 0 }); renderItems(); };
+
+        showModal('새 견적서', `
+          <label class="label">고객사 *</label>
+          <select class="input" id="m-qcust">${customers.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')}</select>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px;">
+            <label class="label" style="margin:0;">품목</label>
+            <button type="button" class="btn btn-secondary" style="padding:4px 8px; font-size:11px;" onclick="quoteItemAdd()">+ 라인 추가</button>
+          </div>
+          <div style="margin-top:8px; font-size:10px; color:var(--text-faint); display:grid; grid-template-columns:2fr 60px 70px 60px 30px; gap:4px;">
+            <span>품목</span><span style="text-align:center">수량</span><span style="text-align:right">소계</span><span style="text-align:center">할인%</span><span></span>
+          </div>
+          <div id="quote-items"></div>
+          <div id="quote-summary" style="margin-top:12px; padding:12px; background:var(--bg-muted); border-radius:8px; font-size:13px;"></div>
+        `, () => {
+          const customerId = document.getElementById('m-qcust').value;
+          const totals = calcQuoteTotals(items);
+          const code = `QT-${new Date().getFullYear()}-${String(quoteSeq++).padStart(4,'0')}`;
+          saveStore('iw001.quoteSeq', quoteSeq);
+          const resolvedItems = items.map(it => {
+            const p = products.find(x => x.id === it.productId);
+            const lineTotal = Math.round((p?.price||0) * it.qty * (1 - it.discount/100));
+            return { name: p?.name||'?', qty: it.qty, price: p?.price||0, discount: it.discount, lineTotal };
+          });
+          quotes.unshift({ id: genId(), code, customerId, date: new Date().toLocaleDateString('ko-KR'), items: resolvedItems, subtotal: totals.subtotal, vat: totals.vat, total: totals.total });
+          saveQuotes(); navigate('quotes'); toast('success', `견적서 ${code} 생성됨`);
+        });
+        // Initial render of items
+        setTimeout(renderItems, 0);
+      }
+
+      function calcQuoteTotals(items) {
+        let subtotal = 0;
+        for (const it of items) {
+          const p = products.find(x => x.id === it.productId);
+          subtotal += Math.round((p?.price||0) * it.qty * (1 - it.discount/100));
+        }
+        const vat = Math.round(subtotal * 0.1);
+        return { subtotal, vat, total: subtotal + vat };
+      }
+
+      function deleteQuote(id) {
+        if (!confirm('이 견적서를 삭제하시겠습니까?')) return;
+        quotes = quotes.filter(q => q.id !== id);
+        saveQuotes(); navigate('quotes'); toast('success', '견적서 삭제됨');
+      }
+
+      // ═══════════════════════════════════════════════════════════════
+      //   MODAL (reusable overlay)
+      // ═══════════════════════════════════════════════════════════════
+      let _modalOnSave = null;
+      function showModal(title, bodyHtml, onSave) {
+        _modalOnSave = onSave;
+        let overlay = document.getElementById('modal-overlay');
+        if (!overlay) {
+          overlay = document.createElement('div');
+          overlay.id = 'modal-overlay';
+          overlay.style.cssText = 'position:fixed;inset:0;z-index:2000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.6);padding:16px;';
+          overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
+          document.body.appendChild(overlay);
+        }
+        overlay.innerHTML = `
+          <div style="width:100%;max-width:520px;background:var(--bg-raised);border:1px solid var(--border-strong);border-radius:16px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.5);max-height:90vh;overflow-y:auto;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+              <h2 style="margin:0;font-size:18px;">${title}</h2>
+              <button type="button" style="background:none;border:none;color:var(--text-faint);cursor:pointer;font-size:16px;" onclick="closeModal()">✕</button>
+            </div>
+            <div>${bodyHtml}</div>
+            <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:20px;">
+              <button class="btn btn-secondary" onclick="closeModal()">취소</button>
+              <button class="btn btn-primary" onclick="submitModal()">저장</button>
+            </div>
+          </div>
+        `;
+        overlay.style.display = 'flex';
+      }
+      function closeModal() {
+        const overlay = document.getElementById('modal-overlay');
+        if (overlay) overlay.style.display = 'none';
+        _modalOnSave = null;
+      }
+      function submitModal() {
+        if (_modalOnSave) {
+          const result = _modalOnSave();
+          if (result === false) return; // validation failed
+        }
+        closeModal();
       }
     </script>
   </body>
