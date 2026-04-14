@@ -924,7 +924,10 @@
               <div class="eyebrow">재무</div>
               <h1>품목관리</h1>
             </div>
-            <button class="btn btn-primary" onclick="openProductModal()">+ 새 품목</button>
+            <div style="display:flex;gap:8px;">
+              <button class="btn btn-secondary" onclick="exportProducts()">📊 CSV</button>
+              <button class="btn btn-primary" onclick="openProductModal()">+ 새 품목</button>
+            </div>
           </div>
           <section class="kpi-grid">
             <div class="card kpi"><div class="kpi-label">총 품목</div><div class="kpi-value">${products.length}</div></div>
@@ -1012,7 +1015,10 @@
               <div class="eyebrow">고객</div>
               <h1>고객관리</h1>
             </div>
-            <button class="btn btn-primary" onclick="openCustomerModal()">+ 새 고객사</button>
+            <div style="display:flex;gap:8px;">
+              <button class="btn btn-secondary" onclick="exportCustomers()">📊 CSV</button>
+              <button class="btn btn-primary" onclick="openCustomerModal()">+ 새 고객사</button>
+            </div>
           </div>
           <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:16px;">
             ${customers.map(c => `
@@ -1080,7 +1086,10 @@
               <div class="eyebrow">재무</div>
               <h1>견적서</h1>
             </div>
-            <button class="btn btn-primary" onclick="openQuoteModal()">+ 새 견적서</button>
+            <div style="display:flex;gap:8px;">
+              <button class="btn btn-secondary" onclick="exportQuotes()">📊 CSV</button>
+              <button class="btn btn-primary" onclick="openQuoteModal()">+ 새 견적서</button>
+            </div>
           </div>
           ${quotes.length === 0 ? '<div class="card" style="text-align:center; padding:40px; color:var(--text-faint);">견적서가 없습니다. 오른쪽 상단에서 추가하세요.</div>' : ''}
           <div style="display:flex; flex-direction:column; gap:12px;">
@@ -1117,9 +1126,12 @@
                     </tr>`).join('')}
                   </tbody>
                 </table>
-                <div style="margin-top:12px; border-top:1px solid var(--border); padding-top:8px; display:flex; justify-content:space-between; font-size:12px;">
+                <div style="margin-top:12px; border-top:1px solid var(--border); padding-top:8px; display:flex; justify-content:space-between; align-items:center; font-size:12px;">
                   <span class="faint">공급가 ${KRW.format(q.subtotal)} · 부가세(10%) ${KRW.format(q.vat)}</span>
-                  <button class="btn btn-secondary" style="padding:4px 8px; font-size:11px; color:#ef4444;" onclick="deleteQuote('${q.id}')">삭제</button>
+                  <div style="display:flex;gap:4px;">
+                    <button class="btn btn-secondary" style="padding:4px 8px; font-size:11px;" onclick="exportQuotePdf('${q.id}')">📄 PDF</button>
+                    <button class="btn btn-secondary" style="padding:4px 8px; font-size:11px; color:#ef4444;" onclick="deleteQuote('${q.id}')">삭제</button>
+                  </div>
                 </div>
               </div>`;
             }).join('')}
@@ -1255,6 +1267,395 @@
         }
         closeModal();
       }
+
+      // ═══════════════════════════════════════════════════════════════
+      //   PHASE A FEATURES
+      // ═══════════════════════════════════════════════════════════════
+
+      // ─── A5. Low-stock badge in sidebar ──────────────────────────────
+      // Patch renderSidebar to show a red badge on 품목관리 when stock is low
+      const originalNavItemHtml = navItemHtml;
+      navItemHtml = function (page, inFavSection) {
+        let html = originalNavItemHtml(page, inFavSection);
+        if (page.id === 'products') {
+          const lowCount = products.filter((p) => p.stock <= p.minStock).length;
+          if (lowCount > 0) {
+            // Insert badge just before the </button>
+            const badge = `<span style="margin-right:4px;background:#ef4444;color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:10px;">${lowCount}</span>`;
+            html = html.replace('</button>', `${badge}</button>`);
+          }
+        }
+        return html;
+      };
+
+      // ─── A2. Dashboard shows REAL data from localStorage ─────────────
+      // Override SEED.kpis getter to compute from live stores
+      Object.defineProperty(SEED, 'kpis', {
+        configurable: true,
+        get() {
+          const totalStock = products.reduce((s, p) => s + p.stock, 0);
+          const lowStock = products.filter((p) => p.stock <= p.minStock).length;
+          return [
+            {
+              label: '총 고객사',
+              value: String(customers.length),
+              hint: customers.length ? '등록됨' : '없음 — 추가하세요',
+            },
+            {
+              label: '총 품목',
+              value: String(products.length),
+              hint: lowStock ? `${lowStock}개 재고 부족` : '재고 양호',
+            },
+            {
+              label: '총 재고 수량',
+              value: totalStock.toLocaleString('ko-KR'),
+              hint: `${new Set(products.map((p) => p.category)).size}개 카테고리`,
+            },
+            {
+              label: '누적 견적',
+              value: String(quotes.length),
+              hint: quotes.length
+                ? KRW.format(quotes.reduce((s, q) => s + q.total, 0)) + ' 총계'
+                : '없음',
+            },
+          ];
+        },
+      });
+
+      // ─── A1. Quote PDF export (via print window) ──────────────────────
+      function exportQuotePdf(id) {
+        const q = quotes.find((x) => x.id === id);
+        if (!q) return;
+        const cust = customers.find((c) => c.id === q.customerId);
+        const w = window.open('', '_blank');
+        if (!w) {
+          toast('error', '팝업이 차단되었습니다. 브라우저 설정을 확인하세요.');
+          return;
+        }
+        w.document.write(`<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>${q.code} — 견적서</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: 'Pretendard Variable', sans-serif; color: #111; padding: 32px; line-height: 1.5; }
+  h1 { margin: 0 0 4px; font-size: 28px; letter-spacing: 0.1em; }
+  .code { color: #eab308; font-family: monospace; font-size: 14px; }
+  .meta { display: flex; justify-content: space-between; margin: 24px 0; font-size: 13px; }
+  .meta dl { margin: 0; }
+  .meta dt { color: #666; font-size: 11px; }
+  .meta dd { margin: 0 0 8px; font-weight: 500; }
+  table { width: 100%; border-collapse: collapse; margin: 24px 0; font-size: 13px; }
+  th, td { border-bottom: 1px solid #ddd; padding: 10px; text-align: left; }
+  th { background: #f5f5f5; font-size: 11px; text-transform: uppercase; color: #666; }
+  td.num, th.num { text-align: right; font-family: monospace; }
+  .totals { margin-left: auto; width: 280px; font-size: 14px; }
+  .totals div { display: flex; justify-content: space-between; padding: 6px 0; }
+  .totals .grand { border-top: 2px solid #111; padding-top: 10px; margin-top: 4px; font-weight: 700; font-size: 18px; color: #eab308; }
+  .footer { margin-top: 48px; padding-top: 24px; border-top: 1px solid #ddd; font-size: 11px; color: #666; }
+  @media print {
+    body { padding: 0; }
+    .no-print { display: none; }
+  }
+  .no-print { position: fixed; top: 16px; right: 16px; }
+  button { padding: 8px 16px; background: #eab308; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; }
+</style>
+</head>
+<body>
+  <div class="no-print">
+    <button onclick="window.print()">🖨️ 인쇄 / PDF 저장</button>
+    <button onclick="window.close()" style="background:#f5f5f5; margin-left:4px;">닫기</button>
+  </div>
+
+  <h1>견 &nbsp; 적 &nbsp; 서</h1>
+  <div class="code">${escapeHtml(q.code)}</div>
+
+  <div class="meta">
+    <dl>
+      <dt>공급받는자</dt>
+      <dd>${escapeHtml(cust?.name || '—')}</dd>
+      ${cust?.ceo ? `<dt>대표자</dt><dd>${escapeHtml(cust.ceo)}</dd>` : ''}
+      ${cust?.bizNo ? `<dt>사업자등록번호</dt><dd>${escapeHtml(cust.bizNo)}</dd>` : ''}
+    </dl>
+    <dl style="text-align: right;">
+      <dt>발행일</dt>
+      <dd>${escapeHtml(q.date)}</dd>
+      <dt>유효기간</dt>
+      <dd>${escapeHtml(q.date)} 기준 30일</dd>
+    </dl>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>품 명</th>
+        <th class="num">수 량</th>
+        <th class="num">단 가</th>
+        <th class="num">할인율</th>
+        <th class="num">금 액</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${q.items
+        .map(
+          (it) => `<tr>
+        <td>${escapeHtml(it.name)}</td>
+        <td class="num">${it.qty}</td>
+        <td class="num">${KRW.format(it.price)}</td>
+        <td class="num">${it.discount ? it.discount + '%' : '—'}</td>
+        <td class="num">${KRW.format(it.lineTotal)}</td>
+      </tr>`,
+        )
+        .join('')}
+    </tbody>
+  </table>
+
+  <div class="totals">
+    <div><span>공급가액</span><span>${KRW.format(q.subtotal)}</span></div>
+    <div><span>부가세 (10%)</span><span>${KRW.format(q.vat)}</span></div>
+    <div class="grand"><span>합 계</span><span>${KRW.format(q.total)}</span></div>
+  </div>
+
+  <div class="footer">
+    본 견적서는 발행일로부터 30일간 유효하며, 위 금액은 부가가치세 포함 금액입니다.<br/>
+    문의: IOTWORKS DESK
+  </div>
+
+  <script>
+    // Auto-focus the print button so Cmd/Ctrl+P works immediately
+    window.addEventListener('load', () => { window.focus(); });
+  <\/script>
+</body>
+</html>`);
+        w.document.close();
+      }
+
+      // ─── A3. CSV export (products / customers / quotes) ───────────────
+      function csvEscape(v) {
+        const s = String(v ?? '');
+        if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+          return '"' + s.replace(/"/g, '""') + '"';
+        }
+        return s;
+      }
+      function downloadCsv(filename, rows) {
+        // BOM for Excel UTF-8 compatibility
+        const csv = '\uFEFF' + rows.map((r) => r.map(csvEscape).join(',')).join('\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
+      function exportProducts() {
+        downloadCsv(
+          `products_${todayStamp()}.csv`,
+          [
+            ['카테고리', '품명', '모델', '단위', '단가', '재고', '최소재고'],
+            ...products.map((p) => [p.category, p.name, p.model, p.unit, p.price, p.stock, p.minStock]),
+          ],
+        );
+        toast('success', `품목 ${products.length}건 CSV 다운로드됨`);
+      }
+      function exportCustomers() {
+        downloadCsv(
+          `customers_${todayStamp()}.csv`,
+          [
+            ['회사명', '대표자', '사업자번호', '연락처', '기본할인율'],
+            ...customers.map((c) => [c.name, c.ceo, c.bizNo, c.phone, c.discount]),
+          ],
+        );
+        toast('success', `고객사 ${customers.length}건 CSV 다운로드됨`);
+      }
+      function exportQuotes() {
+        const rows = [['코드', '고객사', '발행일', '공급가', '부가세', '합계', '품목수']];
+        for (const q of quotes) {
+          const cust = customers.find((c) => c.id === q.customerId);
+          rows.push([q.code, cust?.name || '', q.date, q.subtotal, q.vat, q.total, q.items.length]);
+        }
+        downloadCsv(`quotes_${todayStamp()}.csv`, rows);
+        toast('success', `견적서 ${quotes.length}건 CSV 다운로드됨`);
+      }
+      function todayStamp() {
+        const d = new Date();
+        return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+      }
+
+      // ─── A4. Global search (Cmd+K / Ctrl+K) ──────────────────────────
+      function globalSearch(q) {
+        const needle = q.trim().toLowerCase();
+        if (!needle) return [];
+        const results = [];
+        for (const p of products) {
+          if (p.name.toLowerCase().includes(needle) || (p.model || '').toLowerCase().includes(needle)) {
+            results.push({
+              type: '품목',
+              label: p.name,
+              sub: `${p.category} · ${KRW.format(p.price)}`,
+              go: () => navigate('products'),
+            });
+          }
+        }
+        for (const c of customers) {
+          if (
+            c.name.toLowerCase().includes(needle) ||
+            (c.ceo || '').toLowerCase().includes(needle) ||
+            (c.bizNo || '').includes(needle)
+          ) {
+            results.push({
+              type: '고객',
+              label: c.name,
+              sub: `${c.ceo || '—'} · ${c.bizNo || '—'}`,
+              go: () => navigate('customers'),
+            });
+          }
+        }
+        for (const q2 of quotes) {
+          if (q2.code.toLowerCase().includes(needle)) {
+            const cust = customers.find((c) => c.id === q2.customerId);
+            results.push({
+              type: '견적',
+              label: q2.code,
+              sub: `${cust?.name || '—'} · ${KRW.format(q2.total)}`,
+              go: () => navigate('quotes'),
+            });
+          }
+        }
+        // Pages
+        for (const page of PAGES) {
+          if (page.label.toLowerCase().includes(needle)) {
+            results.push({
+              type: '페이지',
+              label: page.label,
+              sub: GROUP_LABELS[page.group],
+              go: () => navigate(page.id),
+            });
+          }
+        }
+        return results.slice(0, 20);
+      }
+
+      function openSearchPalette() {
+        let overlay = document.getElementById('search-overlay');
+        if (overlay) {
+          overlay.style.display = 'flex';
+          document.getElementById('search-input').focus();
+          return;
+        }
+        overlay = document.createElement('div');
+        overlay.id = 'search-overlay';
+        overlay.style.cssText =
+          'position:fixed;inset:0;z-index:2500;display:flex;align-items:flex-start;justify-content:center;background:rgba(0,0,0,0.7);padding-top:12vh;';
+        overlay.innerHTML = `
+          <div style="width:100%;max-width:560px;background:var(--bg-raised);border:1px solid var(--border-strong);border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.5);overflow:hidden;">
+            <input id="search-input" placeholder="기기·장소·프로젝트·견적·품목 검색..." style="width:100%;padding:16px 20px;background:none;border:none;border-bottom:1px solid var(--border);color:var(--text);font-size:15px;outline:none;" />
+            <div id="search-results" style="max-height:50vh;overflow-y:auto;"></div>
+            <div style="padding:8px 12px;border-top:1px solid var(--border);font-size:10px;color:var(--text-faint);display:flex;justify-content:space-between;">
+              <span>↑↓ 이동 · Enter 선택 · ESC 닫기</span>
+              <span>Cmd+K / Ctrl+K</span>
+            </div>
+          </div>
+        `;
+        overlay.addEventListener('click', (e) => {
+          if (e.target === overlay) closeSearchPalette();
+        });
+        document.body.appendChild(overlay);
+
+        const input = document.getElementById('search-input');
+        const resultsHost = document.getElementById('search-results');
+        let selectedIdx = 0;
+        let currentResults = [];
+
+        function renderResults() {
+          if (currentResults.length === 0) {
+            resultsHost.innerHTML = input.value.trim()
+              ? '<div style="padding:24px;text-align:center;color:var(--text-faint);font-size:13px;">결과 없음</div>'
+              : '<div style="padding:24px;text-align:center;color:var(--text-faint);font-size:13px;">검색어를 입력하세요</div>';
+            return;
+          }
+          resultsHost.innerHTML = currentResults
+            .map(
+              (r, i) => `
+            <div class="sr" data-idx="${i}" style="padding:10px 20px;cursor:pointer;display:flex;align-items:center;gap:12px;${i === selectedIdx ? 'background:rgba(234,179,8,0.1);' : ''}">
+              <span style="font-size:9px;text-transform:uppercase;color:var(--text-faint);background:var(--bg-muted);padding:2px 6px;border-radius:4px;min-width:40px;text-align:center;">${r.type}</span>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:13px;color:var(--text);">${escapeHtml(r.label)}</div>
+                <div style="font-size:11px;color:var(--text-faint);">${escapeHtml(r.sub)}</div>
+              </div>
+            </div>
+          `,
+            )
+            .join('');
+          resultsHost.querySelectorAll('.sr').forEach((el) => {
+            el.addEventListener('click', () => {
+              const idx = Number(el.dataset.idx);
+              currentResults[idx].go();
+              closeSearchPalette();
+            });
+          });
+        }
+
+        input.addEventListener('input', () => {
+          currentResults = globalSearch(input.value);
+          selectedIdx = 0;
+          renderResults();
+        });
+
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape') closeSearchPalette();
+          else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            if (currentResults.length) {
+              selectedIdx = (selectedIdx + 1) % currentResults.length;
+              renderResults();
+            }
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            if (currentResults.length) {
+              selectedIdx = (selectedIdx - 1 + currentResults.length) % currentResults.length;
+              renderResults();
+            }
+          } else if (e.key === 'Enter') {
+            e.preventDefault();
+            const r = currentResults[selectedIdx];
+            if (r) {
+              r.go();
+              closeSearchPalette();
+            }
+          }
+        });
+
+        renderResults();
+        setTimeout(() => input.focus(), 10);
+      }
+      function closeSearchPalette() {
+        const overlay = document.getElementById('search-overlay');
+        if (overlay) overlay.style.display = 'none';
+      }
+
+      // Cmd+K / Ctrl+K shortcut
+      document.addEventListener('keydown', (e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === 'k' && state.user) {
+          e.preventDefault();
+          openSearchPalette();
+        }
+      });
+
+      // Wire up the topbar search input — clicking it opens the palette
+      setTimeout(() => {
+        const topSearch = document.querySelector('.topbar-search');
+        if (topSearch) {
+          topSearch.addEventListener('focus', (e) => {
+            e.target.blur();
+            openSearchPalette();
+          });
+          topSearch.setAttribute('placeholder', '검색 (⌘K / Ctrl+K)');
+        }
+      }, 100);
     </script>
   </body>
 </html>
