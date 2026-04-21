@@ -1762,11 +1762,22 @@
           .catch((err) => {
             document.getElementById('naver-map').innerHTML = `
               <div style="padding:32px; text-align:center;">
-                <p style="color:#ef4444; font-weight:600;">⚠️ 네이버 지도를 불러올 수 없습니다</p>
-                <p class="text-xs faint mt-2">${escapeHtml(err.message)}</p>
+                <p style="font-size:48px; margin-bottom:12px;">🗺️</p>
+                <p style="color:var(--brand-400); font-weight:600; font-size:14px;">네이버 지도 연결 대기 중</p>
                 <p class="text-xs faint mt-2">
-                  Client ID 가 등록된 도메인(http://localhost:5173)에서 접속했는지 확인하세요.<br/>
-                  파일을 직접 더블클릭한 file:// 환경에서는 동작하지 않습니다.
+                  API 키 도메인 등록 후 <b>5~10분</b> 정도 반영 시간이 걸릴 수 있습니다.<br/>
+                  잠시 후 이 페이지를 <b>새로고침</b>하면 지도가 나타납니다.
+                </p>
+                <p class="text-xs faint mt-4" style="background:var(--bg-muted); padding:12px; border-radius:8px; text-align:left; max-width:400px; margin:16px auto 0;">
+                  <b>확인사항:</b><br/>
+                  1. NAVER Cloud 콘솔 → Maps → Application<br/>
+                  2. Web 서비스 URL에 현재 도메인 등록:<br/>
+                  &nbsp;&nbsp;&nbsp;<code style="color:var(--brand-400);">${window.location.origin}</code><br/>
+                  3. 저장 후 5~10분 대기<br/>
+                  4. 브라우저 강력 새로고침 (Cmd+Shift+R)
+                </p>
+                <p class="text-xs faint mt-4">
+                  ✅ <b>지도 없이도</b> 왼쪽 현장 목록에서 현장 추가·수정·공유·AS동선 모두 사용 가능합니다.
                 </p>
               </div>
             `;
@@ -1809,17 +1820,41 @@
         if (!container) return;
         container.innerHTML = '';
 
-        // Default center: 서울 시청
-        const defaultCenter = new naver.maps.LatLng(37.5665, 126.9780);
-        mapInstance = new naver.maps.Map(container, {
-          center: defaultCenter,
-          zoom: 11,
-          zoomControl: true,
-          zoomControlOptions: { position: naver.maps.Position.TOP_LEFT },
-        });
+        try {
+          const defaultCenter = new naver.maps.LatLng(37.5665, 126.9780);
+          mapInstance = new naver.maps.Map(container, {
+            center: defaultCenter,
+            zoom: 11,
+            zoomControl: true,
+            zoomControlOptions: { position: naver.maps.Position.TOP_LEFT },
+          });
 
-        renderMarkers();
-        if (sites.length > 0) resetMapView();
+          // Naver SDK fires 'auth_failed' if Client ID or domain is rejected
+          naver.maps.Event.addListener(mapInstance, 'auth_failed', () => {
+            container.innerHTML = `
+              <div style="padding:32px; text-align:center;">
+                <p style="font-size:48px; margin-bottom:12px;">🗺️</p>
+                <p style="color:#f59e0b; font-weight:600;">API 인증 대기 중</p>
+                <p class="text-xs faint mt-2">
+                  네이버 지도 API 키에 아래 도메인이 등록되어야 합니다:
+                </p>
+                <code style="display:block; margin:12px auto; padding:8px 16px; background:var(--bg-muted); border-radius:6px; color:var(--brand-400); font-size:13px; max-width:300px;">${window.location.origin}</code>
+                <p class="text-xs faint mt-2">
+                  이미 등록하셨다면 <b>5~10분 대기</b> 후 새로고침해주세요.<br/>
+                  (도메인 등록 반영에 시간이 걸립니다)
+                </p>
+                <button onclick="location.reload()" class="btn btn-primary" style="margin-top:16px; font-size:13px;">
+                  🔄 새로고침해서 다시 확인
+                </button>
+              </div>
+            `;
+          });
+
+          renderMarkers();
+          if (sites.length > 0) resetMapView();
+        } catch(e) {
+          container.innerHTML = `<div style="padding:32px; text-align:center; color:var(--text-faint);">지도 초기화 실패: ${escapeHtml(e.message)}</div>`;
+        }
       }
 
       function renderMarkers() {
