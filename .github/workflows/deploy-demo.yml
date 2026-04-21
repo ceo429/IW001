@@ -1,0 +1,57 @@
+# =============================================================================
+# Deploy demo/ folder to GitHub Pages on every push to main.
+#
+# After merging, the demo becomes available at:
+#   https://ceo429.github.io/IW001/
+#
+# ONE-TIME SETUP (owner needs to do this ONCE):
+#   1. Go to: https://github.com/ceo429/IW001/settings/pages
+#   2. Under "Source", select "GitHub Actions"
+#   3. Save. The next push will trigger this workflow.
+#
+# Also add the Pages URL to the Naver Maps API allowed domains so the
+# map loads on the deployed site:
+#   https://ceo429.github.io
+# (add it alongside http://localhost:5173 in the NCP console)
+# =============================================================================
+
+name: Deploy demo to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'demo/**'
+      - '.github/workflows/deploy-demo.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: 'pages'
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload demo folder
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./demo
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
