@@ -1664,15 +1664,42 @@
       // ═══════════════════════════════════════════════════════════════
       const NAVER_CLIENT_ID = 'ylgtdbx6uo';
       let naverSdkLoading = null;
+      let naverAuthFailed = false;
+
+      // Naver SDK calls this global on auth failure (new API contract).
+      // Must be defined BEFORE the SDK script loads.
+      window.navermap_authFailure = function () {
+        naverAuthFailed = true;
+        const container = document.getElementById('naver-map');
+        if (!container) return;
+        container.innerHTML = `
+          <div style="padding:32px; text-align:center;">
+            <p style="font-size:48px; margin-bottom:12px;">🗺️</p>
+            <p style="color:#f59e0b; font-weight:600;">네이버 지도 API 인증 실패</p>
+            <p class="text-xs faint mt-2">
+              Client ID 가 아래 도메인에 등록되어 있는지 확인하세요:
+            </p>
+            <code style="display:block; margin:12px auto; padding:8px 16px; background:var(--bg-muted); border-radius:6px; color:var(--brand-400); font-size:13px; max-width:320px;">${window.location.origin}</code>
+            <p class="text-xs faint mt-2">
+              NAVER Cloud 콘솔 → Maps → Application →<br/>
+              <b>Web 서비스 URL</b> 에 위 도메인 등록 후<br/>
+              <b>5~10분 대기</b> → 새로고침.
+            </p>
+            <button onclick="location.reload()" class="btn btn-primary" style="margin-top:16px; font-size:13px;">
+              🔄 다시 확인
+            </button>
+          </div>
+        `;
+      };
 
       function loadNaverSdk() {
         if (window.naver && window.naver.maps) return Promise.resolve();
         if (naverSdkLoading) return naverSdkLoading;
         naverSdkLoading = new Promise((resolve, reject) => {
           const s = document.createElement('script');
-          s.src = `https://oapi.map.naver.com/openapi/v3/maps.js?ncpClientId=${NAVER_CLIENT_ID}&submodules=geocoder`;
+          s.src = `https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${NAVER_CLIENT_ID}&submodules=geocoder`;
           s.onload = () => resolve();
-          s.onerror = () => reject(new Error('네이버 지도 SDK 로드 실패'));
+          s.onerror = () => reject(new Error('네이버 지도 SDK 로드 실패 (네트워크 또는 URL 오류)'));
           document.head.appendChild(s);
         });
         return naverSdkLoading;
@@ -1818,6 +1845,8 @@
       function initMap() {
         const container = document.getElementById('naver-map');
         if (!container) return;
+        // Bail if auth already failed (navermap_authFailure was called)
+        if (naverAuthFailed) return;
         container.innerHTML = '';
 
         try {
@@ -1829,30 +1858,9 @@
             zoomControlOptions: { position: naver.maps.Position.TOP_LEFT },
           });
 
-          // Naver SDK fires 'auth_failed' if Client ID or domain is rejected
-          naver.maps.Event.addListener(mapInstance, 'auth_failed', () => {
-            container.innerHTML = `
-              <div style="padding:32px; text-align:center;">
-                <p style="font-size:48px; margin-bottom:12px;">🗺️</p>
-                <p style="color:#f59e0b; font-weight:600;">API 인증 대기 중</p>
-                <p class="text-xs faint mt-2">
-                  네이버 지도 API 키에 아래 도메인이 등록되어야 합니다:
-                </p>
-                <code style="display:block; margin:12px auto; padding:8px 16px; background:var(--bg-muted); border-radius:6px; color:var(--brand-400); font-size:13px; max-width:300px;">${window.location.origin}</code>
-                <p class="text-xs faint mt-2">
-                  이미 등록하셨다면 <b>5~10분 대기</b> 후 새로고침해주세요.<br/>
-                  (도메인 등록 반영에 시간이 걸립니다)
-                </p>
-                <button onclick="location.reload()" class="btn btn-primary" style="margin-top:16px; font-size:13px;">
-                  🔄 새로고침해서 다시 확인
-                </button>
-              </div>
-            `;
-          });
-
           renderMarkers();
           if (sites.length > 0) resetMapView();
-        } catch(e) {
+        } catch (e) {
           container.innerHTML = `<div style="padding:32px; text-align:center; color:var(--text-faint);">지도 초기화 실패: ${escapeHtml(e.message)}</div>`;
         }
       }
