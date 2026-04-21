@@ -1783,32 +1783,47 @@
         markerInstances = [];
         routePolyline = null;
 
-        // Load Naver SDK then init map
+        // Load Naver SDK then init map — with robust fallback
         loadNaverSdk()
-          .then(() => initMap())
-          .catch((err) => {
-            document.getElementById('naver-map').innerHTML = `
-              <div style="padding:32px; text-align:center;">
-                <p style="font-size:48px; margin-bottom:12px;">🗺️</p>
-                <p style="color:var(--brand-400); font-weight:600; font-size:14px;">네이버 지도 연결 대기 중</p>
-                <p class="text-xs faint mt-2">
-                  API 키 도메인 등록 후 <b>5~10분</b> 정도 반영 시간이 걸릴 수 있습니다.<br/>
-                  잠시 후 이 페이지를 <b>새로고침</b>하면 지도가 나타납니다.
-                </p>
-                <p class="text-xs faint mt-4" style="background:var(--bg-muted); padding:12px; border-radius:8px; text-align:left; max-width:400px; margin:16px auto 0;">
-                  <b>확인사항:</b><br/>
-                  1. NAVER Cloud 콘솔 → Maps → Application<br/>
-                  2. Web 서비스 URL에 현재 도메인 등록:<br/>
-                  &nbsp;&nbsp;&nbsp;<code style="color:var(--brand-400);">${window.location.origin}</code><br/>
-                  3. 저장 후 5~10분 대기<br/>
-                  4. 브라우저 강력 새로고침 (Cmd+Shift+R)
-                </p>
-                <p class="text-xs faint mt-4">
-                  ✅ <b>지도 없이도</b> 왼쪽 현장 목록에서 현장 추가·수정·공유·AS동선 모두 사용 가능합니다.
-                </p>
-              </div>
-            `;
-          });
+          .then(() => {
+            // Give the SDK a moment to either succeed or trigger navermap_authFailure
+            setTimeout(() => {
+              if (naverAuthFailed) return; // auth failure handler already showed message
+              // SDK claimed to load but maps API is missing → show friendly message
+              if (!window.naver || !window.naver.maps || !window.naver.maps.LatLng) {
+                showMapWaitingMessage();
+                return;
+              }
+              initMap();
+            }, 200);
+          })
+          .catch(() => showMapWaitingMessage());
+      }
+
+      function showMapWaitingMessage() {
+        const container = document.getElementById('naver-map');
+        if (!container) return;
+        container.innerHTML = `
+          <div style="padding:32px; text-align:center;">
+            <p style="font-size:48px; margin-bottom:12px;">🗺️</p>
+            <p style="color:var(--brand-400); font-weight:600; font-size:14px;">네이버 지도 연결 대기 중</p>
+            <p class="text-xs faint mt-2">
+              API 키 도메인 등록 후 <b>5~10분</b> 반영 시간이 걸릴 수 있습니다.
+            </p>
+            <div style="margin:16px auto 0; max-width:440px; background:var(--bg-muted); padding:14px; border-radius:8px; text-align:left; font-size:12px; line-height:1.7;">
+              <b>확인사항</b><br/>
+              1. NAVER Cloud 콘솔 → Maps → Application<br/>
+              2. Web 서비스 URL에 아래 도메인 등록:<br/>
+              &nbsp;&nbsp;&nbsp;<code style="color:var(--brand-400); background:var(--bg-raised); padding:2px 6px; border-radius:3px;">${window.location.origin}</code><br/>
+              3. 저장 → 5~10분 대기<br/>
+              4. 브라우저 캐시 완전 삭제 또는 시크릿 모드로 재접속
+            </div>
+            <button onclick="location.reload()" class="btn btn-primary" style="margin-top:16px;">🔄 다시 확인</button>
+            <p class="text-xs faint mt-4">
+              ✅ 지도 없이도 왼쪽 현장 목록에서 추가·수정·공유·AS동선 모두 사용 가능합니다.
+            </p>
+          </div>
+        `;
       }
 
       function siteListHtml(list) {
