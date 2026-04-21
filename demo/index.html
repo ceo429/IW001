@@ -500,6 +500,7 @@
         { id: 'projects',      label: '프로젝트 & 태스크', group: 'operations', icon: 'projects' },
         { id: 'announcements', label: '공지사항',          group: 'operations', icon: 'announcements' },
         { id: 'as-intake',     label: 'AS 인입건',         group: 'operations', icon: 'as-intake' },
+        { id: 'site-mgmt',     label: '시공현장관리',       group: 'operations', icon: 'spatial' },
 
         { id: 'quotes',        label: '견적서',            group: 'finance',    icon: 'quotes' },
         { id: 'products',      label: '품목관리',          group: 'finance',    icon: 'products' },
@@ -1657,6 +1658,450 @@
           topSearch.setAttribute('placeholder', '검색 (⌘K / Ctrl+K)');
         }
       }, 100);
+
+      // ═══════════════════════════════════════════════════════════════
+      //   시공현장관리 (NAVER Maps 연동)
+      // ═══════════════════════════════════════════════════════════════
+      const NAVER_CLIENT_ID = 'ls777031fa';
+      let naverSdkLoading = null;
+
+      function loadNaverSdk() {
+        if (window.naver && window.naver.maps) return Promise.resolve();
+        if (naverSdkLoading) return naverSdkLoading;
+        naverSdkLoading = new Promise((resolve, reject) => {
+          const s = document.createElement('script');
+          s.src = `https://oapi.map.naver.com/openapi/v3/maps.js?ncpClientId=${NAVER_CLIENT_ID}&submodules=geocoder`;
+          s.onload = () => resolve();
+          s.onerror = () => reject(new Error('네이버 지도 SDK 로드 실패'));
+          document.head.appendChild(s);
+        });
+        return naverSdkLoading;
+      }
+
+      // -- Sites store
+      const DEFAULT_SITES = [
+        { id: genId(), name: '공릉 해링턴 플레이스', address: '서울 노원구 공릉로 232', lat: 37.6258, lng: 127.0732, customerId: null, status: 'active', note: '커뮤니티 시설 IoT 시공' },
+        { id: genId(), name: '프렌즈스크린 서초점', address: '서울 서초구 서초대로 51길 24', lat: 37.4923, lng: 127.0156, customerId: null, status: 'active', note: '룸 3개 신규' },
+        { id: genId(), name: '김캐디 골프존S 용문', address: '대전 서구 도산로 369', lat: 36.3251, lng: 127.3884, customerId: null, status: 'active', note: '룸 5개' },
+        { id: genId(), name: '김캐디 제로골프 서초', address: '서울 서초구 서초대로 51길 24', lat: 37.4925, lng: 127.0160, customerId: null, status: 'active', note: '룸2 + 타석2' },
+        { id: genId(), name: '판도 당산 더스타24', address: '서울 영등포구 양평로12가길 2', lat: 37.5343, lng: 126.8989, customerId: null, status: 'maintenance', note: 'AS 대응 중' },
+      ];
+      let sites = loadStore('iw001.sites', DEFAULT_SITES);
+      function saveSites() { saveStore('iw001.sites', sites); }
+
+      // -- Map instance state (recreated when page is reopened)
+      let mapInstance = null;
+      let markerInstances = [];
+      let routePolyline = null;
+      let routeInfoWindow = null;
+      let selectedSiteId = null;
+
+      // -- Haversine distance (km) between two lat/lng points
+      function distanceKm(a, b) {
+        const R = 6371;
+        const toRad = (d) => (d * Math.PI) / 180;
+        const dLat = toRad(b.lat - a.lat);
+        const dLng = toRad(b.lng - a.lng);
+        const lat1 = toRad(a.lat);
+        const lat2 = toRad(b.lat);
+        const h = Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLng/2)**2;
+        return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+      }
+
+      // ═══ 시공현장관리 페이지 렌더 ═══
+      function renderSiteMgmt(host) {
+        host.innerHTML = `
+          <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <div>
+              <div class="eyebrow">운영</div>
+              <h1>시공현장관리</h1>
+              <p class="text-xs muted mt-2">네이버 지도 기반. 현장 위치를 등록하고 AS 발생 시 동선을 제안합니다.</p>
+            </div>
+            <div style="display:flex;gap:8px;">
+              <button class="btn btn-secondary" onclick="exportSitesCSV()">📊 CSV</button>
+              <button class="btn btn-primary" onclick="openSiteModal()">+ 현장 추가</button>
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns:300px 1fr; gap:16px; height:calc(100vh - 240px); min-height:520px;">
+            <!-- 사이드: 현장 리스트 -->
+            <aside class="card" style="padding:0; overflow:hidden; display:flex; flex-direction:column;">
+              <div style="padding:12px 16px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+                <span class="text-xs faint" style="text-transform:uppercase;">현장 ${sites.length}개</span>
+                <input type="search" id="site-filter" placeholder="이름·주소" style="width:120px; padding:4px 8px; font-size:12px; background:var(--bg-muted); border:1px solid var(--border); border-radius:4px; color:var(--text);" oninput="filterSites(this.value)" />
+              </div>
+              <ul id="site-list" style="list-style:none; padding:0; margin:0; overflow-y:auto; flex:1;">
+                ${siteListHtml(sites)}
+              </ul>
+            </aside>
+
+            <!-- 메인: 지도 -->
+            <div class="card" style="padding:0; overflow:hidden; position:relative;">
+              <div id="naver-map" style="width:100%; height:100%; min-height:520px; background:var(--bg-muted);">
+                <div style="display:flex; align-items:center; justify-content:center; height:100%; color:var(--text-faint);">
+                  지도 로드 중…
+                </div>
+              </div>
+              <div id="map-toolbar" style="position:absolute; top:12px; right:12px; background:var(--bg-raised); border:1px solid var(--border-strong); border-radius:8px; padding:8px; display:flex; gap:6px;">
+                <button class="btn btn-secondary" style="padding:4px 10px; font-size:11px;" onclick="resetMapView()">전체보기</button>
+                <button class="btn btn-secondary" style="padding:4px 10px; font-size:11px;" onclick="useMyLocation()">내 위치</button>
+                ${routePolyline ? '<button class="btn btn-secondary" style="padding:4px 10px; font-size:11px;" onclick="clearRoute()">동선 지우기</button>' : ''}
+              </div>
+            </div>
+          </div>
+        `;
+
+        // Reset map state
+        mapInstance = null;
+        markerInstances = [];
+        routePolyline = null;
+
+        // Load Naver SDK then init map
+        loadNaverSdk()
+          .then(() => initMap())
+          .catch((err) => {
+            document.getElementById('naver-map').innerHTML = `
+              <div style="padding:32px; text-align:center;">
+                <p style="color:#ef4444; font-weight:600;">⚠️ 네이버 지도를 불러올 수 없습니다</p>
+                <p class="text-xs faint mt-2">${escapeHtml(err.message)}</p>
+                <p class="text-xs faint mt-2">
+                  Client ID 가 등록된 도메인(http://localhost:5173)에서 접속했는지 확인하세요.<br/>
+                  파일을 직접 더블클릭한 file:// 환경에서는 동작하지 않습니다.
+                </p>
+              </div>
+            `;
+          });
+      }
+
+      function siteListHtml(list) {
+        if (list.length === 0) {
+          return '<li style="padding:24px; text-align:center; color:var(--text-faint); font-size:12px;">현장이 없습니다.</li>';
+        }
+        return list.map(s => {
+          const cust = customers.find(c => c.id === s.customerId);
+          const statusColor = s.status === 'maintenance' ? '#f59e0b' : s.status === 'done' ? '#22c55e' : '#3b82f6';
+          return `<li class="site-item" data-id="${s.id}" onclick="focusSite('${s.id}')" style="padding:12px 16px; border-bottom:1px solid var(--border); cursor:pointer; ${selectedSiteId===s.id?'background:rgba(234,179,8,0.08);':''}">
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:${statusColor};"></span>
+              <span style="font-size:13px; font-weight:500; flex:1;">${escapeHtml(s.name)}</span>
+              <button onclick="event.stopPropagation(); openSiteModal('${s.id}')" style="background:none; border:none; color:var(--text-faint); cursor:pointer; font-size:11px;">✎</button>
+            </div>
+            <div class="text-xs faint mt-2" style="line-height:1.4;">${escapeHtml(s.address)}</div>
+            ${cust ? `<div class="text-xs muted mt-2">${escapeHtml(cust.name)}</div>` : ''}
+            <div style="display:flex; gap:4px; margin-top:8px;">
+              <button onclick="event.stopPropagation(); shareSite('${s.id}')" style="flex:1; padding:4px; font-size:10px; background:var(--bg-muted); border:1px solid var(--border); border-radius:4px; color:var(--text-muted); cursor:pointer;">🔗 공유</button>
+              <button onclick="event.stopPropagation(); suggestAsRoute('${s.id}')" style="flex:1; padding:4px; font-size:10px; background:var(--bg-muted); border:1px solid var(--border); border-radius:4px; color:var(--text-muted); cursor:pointer;">🚗 AS 동선</button>
+            </div>
+          </li>`;
+        }).join('');
+      }
+
+      function filterSites(q) {
+        const needle = q.trim().toLowerCase();
+        const filtered = needle
+          ? sites.filter(s => s.name.toLowerCase().includes(needle) || s.address.toLowerCase().includes(needle))
+          : sites;
+        document.getElementById('site-list').innerHTML = siteListHtml(filtered);
+      }
+
+      function initMap() {
+        const container = document.getElementById('naver-map');
+        if (!container) return;
+        container.innerHTML = '';
+
+        // Default center: 서울 시청
+        const defaultCenter = new naver.maps.LatLng(37.5665, 126.9780);
+        mapInstance = new naver.maps.Map(container, {
+          center: defaultCenter,
+          zoom: 11,
+          zoomControl: true,
+          zoomControlOptions: { position: naver.maps.Position.TOP_LEFT },
+        });
+
+        renderMarkers();
+        if (sites.length > 0) resetMapView();
+      }
+
+      function renderMarkers() {
+        if (!mapInstance) return;
+        // Clear existing
+        markerInstances.forEach(m => m.setMap(null));
+        markerInstances = [];
+
+        sites.forEach(site => {
+          const marker = new naver.maps.Marker({
+            position: new naver.maps.LatLng(site.lat, site.lng),
+            map: mapInstance,
+            title: site.name,
+            icon: {
+              content: `<div style="position:relative;transform:translate(-50%,-100%);">
+                <div style="background:${site.status==='maintenance'?'#f59e0b':site.status==='done'?'#22c55e':'#eab308'}; color:#0a0a0a; padding:6px 10px; border-radius:8px; font-size:11px; font-weight:700; box-shadow:0 4px 12px rgba(0,0,0,0.3); white-space:nowrap;">📍 ${escapeHtml(site.name)}</div>
+                <div style="position:absolute;bottom:-6px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:6px solid ${site.status==='maintenance'?'#f59e0b':site.status==='done'?'#22c55e':'#eab308'};"></div>
+              </div>`,
+              anchor: new naver.maps.Point(0, 0),
+            },
+          });
+
+          const infoWindow = new naver.maps.InfoWindow({
+            content: `<div style="padding:12px; min-width:200px; font-family:Pretendard, sans-serif;">
+              <div style="font-weight:700; font-size:13px; margin-bottom:4px;">${escapeHtml(site.name)}</div>
+              <div style="font-size:11px; color:#666;">${escapeHtml(site.address)}</div>
+              ${site.note ? `<div style="font-size:11px; margin-top:6px;">${escapeHtml(site.note)}</div>` : ''}
+              <div style="display:flex;gap:4px;margin-top:10px;">
+                <button onclick="suggestAsRoute('${site.id}')" style="flex:1;padding:6px;font-size:11px;background:#eab308;color:#0a0a0a;border:none;border-radius:4px;cursor:pointer;font-weight:600;">🚗 AS 동선</button>
+                <button onclick="shareSite('${site.id}')" style="flex:1;padding:6px;font-size:11px;background:#f5f5f5;color:#333;border:none;border-radius:4px;cursor:pointer;">🔗 공유</button>
+              </div>
+            </div>`,
+          });
+
+          naver.maps.Event.addListener(marker, 'click', () => {
+            if (infoWindow.getMap()) infoWindow.close();
+            else infoWindow.open(mapInstance, marker);
+            selectedSiteId = site.id;
+            updateSiteListSelection();
+          });
+
+          markerInstances.push(marker);
+        });
+      }
+
+      function updateSiteListSelection() {
+        document.querySelectorAll('.site-item').forEach(el => {
+          el.style.background = el.dataset.id === selectedSiteId ? 'rgba(234,179,8,0.08)' : '';
+        });
+      }
+
+      function focusSite(id) {
+        const site = sites.find(s => s.id === id);
+        if (!site || !mapInstance) return;
+        mapInstance.setCenter(new naver.maps.LatLng(site.lat, site.lng));
+        mapInstance.setZoom(15);
+        selectedSiteId = id;
+        updateSiteListSelection();
+        // Open the matching marker's info window
+        const idx = sites.findIndex(s => s.id === id);
+        if (idx >= 0 && markerInstances[idx]) {
+          naver.maps.Event.trigger(markerInstances[idx], 'click');
+        }
+      }
+
+      function resetMapView() {
+        if (!mapInstance || sites.length === 0) return;
+        const bounds = new naver.maps.LatLngBounds();
+        sites.forEach(s => bounds.extend(new naver.maps.LatLng(s.lat, s.lng)));
+        mapInstance.fitBounds(bounds);
+      }
+
+      function useMyLocation() {
+        if (!navigator.geolocation) {
+          toast('error', '브라우저가 위치 정보를 지원하지 않습니다');
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            if (!mapInstance) return;
+            const here = new naver.maps.LatLng(pos.coords.latitude, pos.coords.longitude);
+            mapInstance.setCenter(here);
+            mapInstance.setZoom(13);
+            new naver.maps.Marker({
+              position: here,
+              map: mapInstance,
+              icon: {
+                content: '<div style="width:14px;height:14px;border-radius:50%;background:#3b82f6;border:3px solid white;box-shadow:0 0 0 2px #3b82f6;"></div>',
+                anchor: new naver.maps.Point(7, 7),
+              },
+            });
+            toast('success', '내 위치 표시됨');
+          },
+          (err) => toast('error', '위치를 가져올 수 없습니다: ' + err.message),
+        );
+      }
+
+      // ═══ 현장 추가/수정 모달 ═══
+      function openSiteModal(id) {
+        const s = id ? sites.find(x => x.id === id) : null;
+        showModal(s ? '현장 수정' : '새 현장 등록', `
+          <label class="label">현장명 *</label>
+          <input class="input" id="m-sname" value="${escapeHtml(s?.name||'')}" required />
+          <label class="label mt-2">주소 *</label>
+          <input class="input" id="m-saddr" value="${escapeHtml(s?.address||'')}" placeholder="예: 서울 강남구 테헤란로 123" required />
+          <p class="text-xs faint mt-2">저장 시 주소를 자동으로 좌표로 변환합니다.</p>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;" class="mt-2">
+            <div>
+              <label class="label">고객사</label>
+              <select class="input" id="m-scust">
+                <option value="">— 없음 —</option>
+                ${customers.map(c => `<option value="${c.id}" ${s?.customerId===c.id?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label class="label">상태</label>
+              <select class="input" id="m-sstatus">
+                <option value="active" ${(!s||s.status==='active')?'selected':''}>진행중</option>
+                <option value="maintenance" ${s?.status==='maintenance'?'selected':''}>유지보수</option>
+                <option value="done" ${s?.status==='done'?'selected':''}>완료</option>
+              </select>
+            </div>
+          </div>
+          <label class="label mt-2">메모</label>
+          <textarea class="input" id="m-snote" rows="2">${escapeHtml(s?.note||'')}</textarea>
+          <div id="geocode-status" class="text-xs muted mt-2"></div>
+        `, async () => {
+          const name = document.getElementById('m-sname').value.trim();
+          const address = document.getElementById('m-saddr').value.trim();
+          if (!name || !address) { toast('error', '현장명과 주소를 입력하세요'); return false; }
+
+          // Geocode the address
+          const statusEl = document.getElementById('geocode-status');
+          statusEl.textContent = '⏳ 주소를 좌표로 변환 중…';
+          statusEl.style.color = '#3b82f6';
+
+          try {
+            await loadNaverSdk();
+            const coords = await geocodeAddress(address);
+            const data = {
+              name,
+              address,
+              lat: coords.lat,
+              lng: coords.lng,
+              customerId: document.getElementById('m-scust').value || null,
+              status: document.getElementById('m-sstatus').value,
+              note: document.getElementById('m-snote').value.trim(),
+            };
+            if (s) Object.assign(s, data);
+            else sites.push({ id: genId(), ...data });
+            saveSites();
+            toast('success', s ? '현장 정보 수정됨' : '현장 등록 완료');
+            navigate('site-mgmt');
+            return true;
+          } catch (err) {
+            statusEl.textContent = '❌ ' + err.message;
+            statusEl.style.color = '#ef4444';
+            return false; // keep modal open
+          }
+        });
+      }
+
+      function geocodeAddress(address) {
+        return new Promise((resolve, reject) => {
+          if (!naver.maps.Service) { reject(new Error('지오코더가 로드되지 않았습니다')); return; }
+          naver.maps.Service.geocode({ query: address }, (status, response) => {
+            if (status !== naver.maps.Service.Status.OK) {
+              reject(new Error('주소 검색 실패. 더 자세한 주소를 입력해보세요'));
+              return;
+            }
+            const items = response.v2.addresses;
+            if (!items || items.length === 0) {
+              reject(new Error('주소를 찾을 수 없습니다'));
+              return;
+            }
+            resolve({ lat: parseFloat(items[0].y), lng: parseFloat(items[0].x) });
+          });
+        });
+      }
+
+      // ═══ AS 동선 제안 ═══
+      function suggestAsRoute(siteId) {
+        const site = sites.find(s => s.id === siteId);
+        if (!site || !mapInstance) return;
+
+        // Find candidate origin sites (others nearby), pick the closest 'active' site
+        const others = sites.filter(s => s.id !== siteId && s.status === 'active');
+        if (others.length === 0) {
+          toast('error', '동선을 그릴 다른 현장이 없습니다. 내 위치 기반 동선을 사용하세요.');
+          return;
+        }
+        let origin = others[0];
+        let minDist = distanceKm(origin, site);
+        for (const o of others.slice(1)) {
+          const d = distanceKm(o, site);
+          if (d < minDist) { minDist = d; origin = o; }
+        }
+
+        clearRoute();
+
+        // Draw a polyline between origin and destination
+        routePolyline = new naver.maps.Polyline({
+          map: mapInstance,
+          path: [
+            new naver.maps.LatLng(origin.lat, origin.lng),
+            new naver.maps.LatLng(site.lat, site.lng),
+          ],
+          strokeColor: '#eab308',
+          strokeWeight: 4,
+          strokeOpacity: 0.85,
+          strokeStyle: 'shortdash',
+        });
+
+        // Fit bounds to show both points
+        const bounds = new naver.maps.LatLngBounds();
+        bounds.extend(new naver.maps.LatLng(origin.lat, origin.lng));
+        bounds.extend(new naver.maps.LatLng(site.lat, site.lng));
+        mapInstance.fitBounds(bounds);
+
+        // Info window at midpoint
+        const midLat = (origin.lat + site.lat) / 2;
+        const midLng = (origin.lng + site.lng) / 2;
+        const distance = distanceKm(origin, site);
+        const eta = Math.round(distance * 2.5); // rough estimate: 1km ≈ 2.5min in city
+
+        routeInfoWindow = new naver.maps.InfoWindow({
+          position: new naver.maps.LatLng(midLat, midLng),
+          content: `<div style="padding:10px; font-family:Pretendard, sans-serif; min-width:200px;">
+            <div style="font-weight:700; font-size:12px; color:#eab308; margin-bottom:6px;">🚗 AS 대응 동선</div>
+            <div style="font-size:11px; line-height:1.6;">
+              <div><b>출발</b>: ${escapeHtml(origin.name)}</div>
+              <div><b>도착</b>: ${escapeHtml(site.name)}</div>
+              <div style="margin-top:4px;color:#333;"><b>직선거리</b>: ${distance.toFixed(1)} km</div>
+              <div style="color:#666;font-size:10px;">예상 소요시간: 약 ${eta}분 (시내 평균)</div>
+            </div>
+            <button onclick="navigator.clipboard.writeText('${origin.name} → ${site.name} (직선거리 ${distance.toFixed(1)}km, 약 ${eta}분)').then(()=>alert('복사됨'))" style="margin-top:8px;padding:4px 8px;font-size:10px;background:#eab308;color:#0a0a0a;border:none;border-radius:4px;cursor:pointer;font-weight:600;">동선 정보 복사</button>
+          </div>`,
+        });
+        routeInfoWindow.open(mapInstance);
+        toast('success', `AS 동선 제안: ${origin.name} → ${site.name}`);
+      }
+
+      function clearRoute() {
+        if (routePolyline) { routePolyline.setMap(null); routePolyline = null; }
+        if (routeInfoWindow) { routeInfoWindow.close(); routeInfoWindow = null; }
+      }
+
+      // ═══ 공유 ═══
+      function shareSite(siteId) {
+        const site = sites.find(s => s.id === siteId);
+        if (!site) return;
+        const text = `[${site.name}]\n주소: ${site.address}\n좌표: ${site.lat.toFixed(5)}, ${site.lng.toFixed(5)}\n네이버 지도: https://map.naver.com/v5/?c=${site.lng},${site.lat},15,0,0,0,dh\n${site.note ? '메모: ' + site.note : ''}`;
+
+        if (navigator.share) {
+          navigator.share({ title: site.name, text }).catch(() => fallbackCopy(text));
+        } else {
+          fallbackCopy(text);
+        }
+      }
+
+      function fallbackCopy(text) {
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(text).then(() => toast('success', '클립보드에 복사됨'));
+        } else {
+          // Legacy fallback
+          const ta = document.createElement('textarea');
+          ta.value = text; document.body.appendChild(ta);
+          ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+          toast('success', '클립보드에 복사됨');
+        }
+      }
+
+      function exportSitesCSV() {
+        downloadCsv(`sites_${todayStamp()}.csv`, [
+          ['현장명', '주소', '위도', '경도', '상태', '메모'],
+          ...sites.map(s => [s.name, s.address, s.lat, s.lng, s.status, s.note||'']),
+        ]);
+        toast('success', `현장 ${sites.length}건 CSV 다운로드됨`);
+      }
+
+      // Register the page renderer
+      LIVE_PAGES['site-mgmt'] = renderSiteMgmt;
     </script>
   </body>
 </html>
